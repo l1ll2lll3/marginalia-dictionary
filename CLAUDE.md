@@ -1,6 +1,9 @@
 # Marginalia Dictionary — Claude Code 컨텍스트
 
 > 새 세션은 이 파일 → `README.md` → `docs/schema.md` → `docs/grading_sources.md` 순서로 읽고 시작할 것.
+>
+> 이 파일은 손으로 쓴 것이다. `/init`으로 다시 만들지 말 것 (분리 경위·결정 사항이 사라진다).
+> 사전 작업은 2026-10-17부터 **이 리포에서만** 한다. reading 리포는 책 파이프라인 전용.
 
 ## 이 프로젝트는
 

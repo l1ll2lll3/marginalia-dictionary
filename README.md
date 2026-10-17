@@ -65,20 +65,36 @@ marginalia-dictionary/
 
 ## 시작하기
 
+### 이 Mac에서
+
+환경(`.venv`), 원본(`kaikki-en.jsonl`), 빌드된 `dict.db`가 이미 다 있다. 바로 쓰면 된다.
+
 ```bash
 cd ~/marginalia-dictionary
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-python3 fetch_data.py        # git에 없는 원본 받기 (--list로 목록, 끊기면 이어받음)
 
-# 영영사전 조회
+# 영영사전 조회 (CLI)
 .venv/bin/python en-en/scripts/dict.py object
-.venv/bin/python en-en/scripts/dict.py "a piece of cake"
+.venv/bin/python en-en/scripts/build_levels.py --check went colour object
 
-# dict.db 다시 빌드 (~3분)
-.venv/bin/python en-en/scripts/build_dict_db.py
+# 데이터 확인 페이지 → http://localhost:8080/test  (끌 때 Ctrl+C)
+cd en-en/app && ../../.venv/bin/python server.py
 ```
 
-웹앱 로컬 실행과 배포는 `en-en/README.md`를 볼 것.
+### 새 컴퓨터에서 (처음 한 번)
+
+```bash
+git clone <이 리포> ~/marginalia-dictionary && cd ~/marginalia-dictionary
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python fetch_data.py                       # 원본 받기 (3.3GB, 끊기면 이어받음)
+.venv/bin/python en-en/scripts/build_dict_db.py      # dict.db (~45초)
+.venv/bin/python en-en/scripts/build_levels.py       # 등급 (~10초)
+```
+
+### 다시 빌드할 때
+
+발음 선택 로직이나 원본을 바꿨으면 `build_dict_db.py` → `build_levels.py` 순서로 둘 다 다시 돌린다 (`build_dict_db.py`가 표를 지우고 새로 만들기 때문에 등급도 사라진다).
+
+배포는 `en-en/README.md`를 볼 것 — **배포 전에 운영 DB의 user_examples 백업 필수.**
 
 ---
 
