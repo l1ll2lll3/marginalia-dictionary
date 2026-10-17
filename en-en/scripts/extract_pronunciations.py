@@ -18,6 +18,7 @@ pronunciations_en.json에 누적되므로 두 번째 책부터는 이미 받은 
 
 import io
 import re
+import unicodedata
 import json
 import gzip
 import argparse
@@ -41,16 +42,63 @@ POS_FROM_KAIKKI = {
 # 발음 변종 우선순위. 앞쪽일수록 먼저 채택한다.
 # 한 책 안에서 표기를 통일하는 것이 목적이라 미국식으로 고정한다.
 US_TAGS = ("General-American", "GenAm", "US", "American", "Canada")
+STRONG_US_TAGS = ("General-American", "GenAm", "US", "American")
 UK_TAGS = ("Received-Pronunciation", "RP", "UK", "British", "England")
 
-# 미국식도 영국식도 아닌 지역 방언. 태그가 없는 표준형보다 우선되면 안 된다.
+# 미국·영국 표준도 아니고 방언도 아닌, 발음 특징만 표시하는 태그.
+# 이 태그만 달린 후보는 "태그 없음"과 같게 본다.
+NEUTRAL_TAGS = ("cot-caught-merger", "pin-pen-merger", "Mary-marry-merry-merger",
+                "father-bother-merger", "horse-hoarse-merger", "wine-whine-merger",
+                "Standard", "standard", "General", "Southern", "Western", "weak", "strong", "stressed",
+                "unstressed", "emphatic", "colloquial", "rhotic", "non-rhotic")
+
+# 지역 방언 판정은 허용 목록 방식이다 (_variety): 미국·영국·중립 태그가 아닌 태그가
+# 하나라도 붙으면 방언으로 본다.
 #
-# 이걸 빼뒀더니 호주 발음이 "태그 없음"으로 분류돼 가산점을 받고,
-# cook이 /kʉk/, fish가 /fɘʃ/로 들어갔다.
+# 처음에는 방언 태그를 나열했다. 그랬더니 목록에 없는 지역이 계속 "태그 없음"으로
+# 가산점을 받았다 — cook /kʉk/(Scotland), fish /fɘʃ/(New-Zealand), fall /faːl/(Northumbria).
+# 아래 목록은 build_levels 등 다른 곳에서 참고용으로만 쓴다.
 DIALECT_TAGS = ("Australia", "New-Zealand", "Scotland", "Wales", "Ireland",
                 "Northern-England", "Southern-US", "India", "South-Africa",
                 "Singapore", "Philippines", "Nigeria", "AAVE", "Cockney",
                 "Estuary-English", "Multicultural-London-English")
+
+# note 칸 해석. 새 덤프는 억양 정보를 태그 대신 note에 적는 경우가 많다.
+#
+# 1) 지역·집단 이름이 있으면 방언이다. US·UK·RP·Canada 외의 대문자 단어로 판단한다.
+#      "Midland US, Southern US" (but /ˈbɜt/), "Upper Midwestern US" (egg /eɪ̯ɡ/),
+#      "Baltimore, Philadelphia", "South Wales", "African-American Vernacular"
+# 2) 명시적으로 미국·영국을 적은 경우: "yod-dropping, US, Canada" / "…, Received Pronunciation"
+# 3) 영국식 특징: non-rhotic, yod-coalescence
+# 4) 자음 탈락: nt-flapping, t-glottalization (단 "without …"은 표준형)
+# 5) 나머지는 발음 특징 설명이라 중립: "stressed form", "happy-tensing", "rhotic",
+#    "without the cot–caught merger"
+#
+# "rhotic"을 미국식 신호로 쳤다가 plumber가 b를 발음하는 /ˈplʌm.bʌɾ/로 들어갔다.
+NOTE_ALLOWED_NAMES = {"US", "UK", "RP", "Received", "Pronunciation", "General", "American",
+                      "Canada", "Canadian", "British", "English"}
+NOTE_NAME = re.compile(r"\b[A-Z][A-Za-z-]*")
+# 하이픈으로 이은 발음 현상 이름(Mary–marry–merry merger, th-fronting)은 지역명이 아니다
+NOTE_PHENOMENON = re.compile(r"[\w/]+(?:[–-][\w/]+)+")
+NOTE_US = re.compile(r"\bUS\b|General American|Canad|yod-dropping")
+NOTE_UK = re.compile(r"Received Pronunciation|\bUK\b|\bRP\b|British|non-rhotic|yod-coalescence",
+                     re.IGNORECASE)
+NOTE_REDUCED = re.compile(r"^(?!without).*(flapping|glottal|elision)", re.IGNORECASE)
+
+# 태그에 이게 있으면 미국 태그가 같이 있어도 표준형이 아니다
+# (terrible의 /ˈtɝ.bəl/은 [US, archaic, dialectal]).
+#
+# "dialectal"은 넣지 않는다. 이 덤프는 미국 표준형에도 붙인다 — profit의 /ˈpɹɑfɪt/이
+# [General-American, dialectal] + note "of Canada"다. 넣었더니 영국식 /ˈpɹɒfɪt/이 뽑혔다.
+NONSTANDARD_TAGS = {"archaic", "obsolete", "dated", "rare", "nonstandard",
+                    "uncommon", "proscribed", "humorous", "eye-dialect"}
+
+# 미국식 표기에만 나오는 r음화 모음
+US_SYMBOLS = re.compile(r"[ɚɝ]")
+
+# tr·dr 파찰음화 (/t͡ʃɹ/, /d͡ʒɹ/). 철자와 상관없이 구어 변종이다.
+# interesting은 철자에 ti가 있어서 철자 검사를 통과해버렸다.
+TR_AFFRICATION = re.compile(r"(t͡ʃ|tʃ|d͡ʒ|dʒ)ɹ")
 
 
 # 파찰음 /t͡ʃ/·/d͡ʒ/을 정당화하는 철자. 이게 없는데 발음에 파찰음이 있으면
@@ -85,11 +133,58 @@ NOT_A_SPELLING_VARIANT = {
 }
 
 STRIP_FOR_COMPARE = str.maketrans("", "", "ˈˌ.ː ͡/")
+VOWELS = set("aeiouyəɪʊɛɔæɑɒʌɜɐɚɝøœɘʉɵɨʏɤɯɞɶ")
+
+
+def _base(ipa):
+    """비교용: 구별 부호(결합 문자)를 뗀다. /fɪ̝ʃ/ → /fɪʃ/"""
+    return "".join(ch for ch in unicodedata.normalize("NFD", ipa)
+                   if not unicodedata.combining(ch))
 
 
 def _consonant_count(ipa):
-    vowels = set("aeiouəɪʊɛɔæɑɒʌɜɐɚɝyøœiːuː")
-    return sum(1 for ch in ipa if ch.isalpha() and ch not in vowels)
+    # ː·ʰ·ʲ 같은 수식 문자(Lm)는 isalpha()가 참이라 따로 뺀다.
+    # ɚ·ɝ는 모음 + r이므로 r 하나로 센다 — 안 그러면 /ˈwɔ.tɚ/가 /ˈwʊ.təɹ/에 진다.
+    base = _base(ipa)
+    return sum(1 for ch in base
+               if ch.isalpha() and ch not in VOWELS and unicodedata.category(ch) != "Lm") \
+        + sum(base.count(ch) for ch in "ɚɝ")
+
+
+def _variety(tags, note=None):
+    """(변종, 가산점).
+
+    - 비표준 표시(archaic, dialectal …)가 있으면 방언이다.
+    - 표준 태그(General-American, RP …)가 있으면 다른 지역이 같이 붙어 있어도 표준형이다
+      — button의 /ˈbʌtən/은 [General-American, Received-Pronunciation, Southern-England].
+    - 표준 태그 없이 다른 지역 태그가 붙으면 방언이다 — tune의 /tɪu̯n/은 [Canada, Wales].
+    - Canada만 붙은 것은 미국식으로 치지 않고 중립으로 본다. awake의 /əˈweːk/처럼
+      캐나다 고유 발음이 미국 가산점을 받아 표준형 /əˈweɪk/을 이기는 일이 있었다.
+    - 태그가 없으면 note를 읽는다 (위 NOTE_* 설명).
+    """
+    if tags & NONSTANDARD_TAGS:
+        return "dialect", -4.0
+    if tags & set(STRONG_US_TAGS):
+        return "us", 2.0
+    # British Southern Standard는 새 영국식 표기 체계(/foːl/, /n(j)ʉw/)라 전통 RP보다 뒤에 둔다
+    if {"British", "Southern", "Standard"} <= tags:
+        return "uk", -1.0
+    if tags & set(UK_TAGS):
+        return "uk", 0.0
+    if tags - set(US_TAGS) - set(NEUTRAL_TAGS) - {"dialectal"}:
+        return "dialect", -4.0
+    if note:
+        names = set(NOTE_NAME.findall(NOTE_PHENOMENON.sub("", note))) - NOTE_ALLOWED_NAMES
+        if names:
+            return "dialect", -4.0
+        if NOTE_REDUCED.search(note):
+            return "unknown", -2.0
+        if NOTE_UK.search(note):
+            return "uk", 0.0
+        if NOTE_US.search(note):
+            return "us", 2.0
+    bonus = 0.0 if tags & {"unstressed", "weak"} else 1.0
+    return "unknown", bonus
 
 
 def _score(ipa, word):
@@ -105,17 +200,23 @@ def _score(ipa, word):
 
     # 철자에 근거 없는 파찰음 — trouble의 /t͡ʃ/가 여기 걸린다
     if any(a in ipa for a in AFFRICATES):
-        if not any(g in lowered for g in AFFRICATE_GRAPHEMES):
+        if not any(g in lowered for g in AFFRICATE_GRAPHEMES) or TR_AFFRICATION.search(ipa):
             score -= 10.0
 
-    # 괄호는 선택적 분절 표기 — /kənˈt(ʃ)ɹæst/
+    # 괄호는 선택적 분절 표기 — /kənˈt(ʃ)ɹæst/. 감점이 미국식 가산점보다 크면
+    # mountain의 미국식 /ˈmaʊn.t(ə)n/이 영국식에 진다.
     if "(" in ipa or ")" in ipa:
-        score -= 3.0
+        score -= 1.5
 
     # 미국식으로 통일하는 것이 목적이므로 영국식 기호는 감점한다.
     # 미국식 표기가 아예 없는 단어(apéritif, aunt)에서는 그래도 최선이라 선택된다.
     if UK_SYMBOLS.search(ipa):
         score -= 2.5
+
+    # 반대로 ɚ·ɝ는 미국식 표기다.
+    # (장음 기호 ː 감점도 시험했다가 뺐다 — view가 /vjuː/ 대신 웨일스식 /vɪu̯/로 갔다.)
+    if US_SYMBOLS.search(ipa):
+        score += 0.5
 
     # 자음이 더 많은 쪽을 선호한다. painting의 /ˈpeɪ.nɪŋ/은 표준형
     # /ˈpeɪn.tɪŋ/에서 t가 탈락한 축약형이라 자음이 하나 적다.
@@ -124,13 +225,26 @@ def _score(ipa, word):
 
 
 def _is_reduction(shorter, longer):
-    """shorter가 longer에서 분절을 뺀 축약형인지 (부분수열 판정)."""
-    a = shorter.translate(STRIP_FOR_COMPARE)
-    b = longer.translate(STRIP_FOR_COMPARE)
+    """shorter가 longer에서 **자음**을 뺀 축약형인지 (painting의 t 탈락).
+
+    빠진 것이 모음이나 j뿐이면 축약이 아니다. 미국식 /ˈstu.dn̩t/은 /ˈstjuː.dn̩t/의
+    부분수열이지만 yod 탈락이라는 억양 차이다. 구별 부호만 다른 경우(/fɪʃ/ vs 호주식
+    /fɪ̝ʃ/)도 축약이 아니다.
+    """
+    a = _base(shorter).translate(STRIP_FOR_COMPARE)
+    b = _base(longer).translate(STRIP_FOR_COMPARE)
     if len(a) >= len(b):
         return False
-    it = iter(b)
-    return all(ch in it for ch in a)
+    dropped, i = [], 0
+    for ch in b:
+        if i < len(a) and a[i] == ch:
+            i += 1
+        else:
+            dropped.append(ch)
+    if i < len(a):                      # 부분수열이 아니다
+        return False
+    return any(ch.isalpha() and ch not in VOWELS and ch != "j"
+               and unicodedata.category(ch) != "Lm" for ch in dropped)
 
 
 def _pick_ipa(sounds, word):
@@ -147,26 +261,39 @@ def _pick_ipa(sounds, word):
         ipa = (sound.get("ipa") or "").strip()
         if not ipa or not ipa.startswith("/"):
             continue
-        tags = set(sound.get("tags") or [])
-        if tags & set(US_TAGS):
-            variety, bonus = "us", 2.0
-        elif tags & set(DIALECT_TAGS):
-            variety, bonus = "dialect", -4.0
-        elif tags & set(UK_TAGS):
-            variety, bonus = "uk", 0.0
-        else:
-            variety, bonus = "unknown", 1.0
+        # "/ˈtwɛnti/ [-ɛɾ̃i]"처럼 정밀 표기가 한 칸에 붙어 오는 경우가 있다
+        ipa = ipa[:ipa.index("/", 1) + 1] if "/" in ipa[1:] else ipa
+        variety, bonus = _variety(set(sound.get("tags") or []), sound.get("note"))
         candidates.append([ipa, variety, bonus])
 
     if not candidates:
         return None, None
+
+    # 표준 태그(us/uk)가 붙은 후보가 있으면 태그 없는 후보는 오히려 약간 감점한다.
+    # 그런 단어에서 태그 없는 후보는 대개 뒤에 덧붙인 부차 변형이다 — thank에는
+    # RP /ˈθæŋk/ 뒤에 태그 없는 /ˈðæŋk/·/ˈθeɪŋk/가 있다.
+    if any(variety in ("us", "uk") for _, variety, _ in candidates):
+        for c in candidates:
+            if c[1] == "unknown" and c[2] > 0:
+                c[2] = -0.5
+
+    # ː만 다른 쌍이면 ː 없는 쪽(미국식 표기)을 고른다 — fall /fɔːl/ vs /fɔl/
+    bare = {ipa.replace("ː", "") for ipa, _, _ in candidates if "ː" not in ipa}
+    for c in candidates:
+        if "ː" in c[0] and c[0].replace("ː", "") in bare:
+            c[2] -= 1.0
+
 
     # 축약 판정의 기준이 되는 "멀쩡한" 후보들. 파찰음·괄호로 감점된 것은 제외한다.
     #
     # 그냥 "다른 후보의 부분수열이면 감점"으로 하면 역효과가 난다. trouble의
     # 올바른 /ˈtɹʌbəl/은 잘못된 /ˈt͡ʃɹʌbəl/의 부분수열이라 감점당하고, 결국
     # 엉뚱한 방언형 /ˈtɹʊbəl/(Northern-England)이 뽑힌다.
-    clean = [ipa for ipa, _, _ in candidates if _score(ipa, word) >= 0]
+    # 방언형과 영국식도 기준에서 뺀다 — 그보다 짧다는 이유로 미국 표준형이 감점되면
+    # 안 된다. new의 미국식 /nu/는 영국식 /njuː/의 부분수열이지만 축약이 아니라
+    # 억양 차이(yod 탈락)다.
+    clean = [ipa for ipa, variety, _ in candidates
+             if variety not in ("dialect", "uk") and _score(ipa, word) >= 0]
 
     best, best_score = None, None
     for ipa, variety, bonus in candidates:
