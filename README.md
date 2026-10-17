@@ -126,6 +126,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ## 라이선스
 
+**코드**는 MIT 라이선스다 (`LICENSE`). **데이터**(`*/data/`)는 원래 출처의 라이선스를 따른다. 특히 CC BY-SA 데이터로 만든 산출물(dict.db 등)을 배포하면 같은 조건이 적용된다.
+
 | 데이터 | 라이선스 |
 |---|---|
 | Wiktionary (kaikki.org, wiktextract) | CC BY-SA 3.0 / 4.0 |
