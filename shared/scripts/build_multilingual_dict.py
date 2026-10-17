@@ -15,6 +15,7 @@ Usage:
   python build_multilingual_dict.py --lookup word    # Test lookup
 """
 
+import gzip
 import json
 import sys
 import time
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 WIKT_DIR = ROOT / "shared" / "data" / "raw"   # raw-wiktextract-data.jsonl 을 여기 둔다 (이 Mac에 없음)
 EN_JSONL = ROOT / "en-en" / "data" / "raw" / "kaikki-en.jsonl"
 RAW_JSONL = WIKT_DIR / "raw-wiktextract-data.jsonl"
+RAW_JSONL_GZ = WIKT_DIR / "raw-wiktextract-data.jsonl.gz"   # fetch_data.py가 받는 형태
 OUTPUT = ROOT / "shared" / "data" / "multilingual_dict.json"
 
 
@@ -85,7 +87,9 @@ def extract_ko_zh_entries():
     zh_ko_trans = defaultdict(list)  # zh_word -> [ko translations]
     count = 0
 
-    with open(RAW_JSONL, "r", encoding="utf-8") as f:
+    raw = open(RAW_JSONL, "r", encoding="utf-8") if RAW_JSONL.exists() \
+        else gzip.open(RAW_JSONL_GZ, "rt", encoding="utf-8")
+    with raw as f:
         for line in f:
             count += 1
             if count % 2000000 == 0:

@@ -11,3 +11,7 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+# fetch_data.py가 받는 원본
+en-en/data/raw/*.pdf
+*.part

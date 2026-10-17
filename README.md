@@ -35,6 +35,7 @@ marginalia-dictionary/
 ├── README.md               ← 이 파일
 ├── CLAUDE.md               ← Claude Code 세션용 컨텍스트
 ├── requirements.txt
+├── fetch_data.py           ← git에 없는 원본 받기
 ├── docs/
 │   ├── schema.md           ← DB 스키마 (현재 + 추가 예정)
 │   └── grading_sources.md  ← 어휘 등급 목록 조사와 결정
@@ -55,7 +56,7 @@ marginalia-dictionary/
 └── en-zh/ ko-en/ ko-zh/ zh-ko/ zh-zh/   (아직 README만)
 ```
 
-용량이 큰 파일(`kaikki-en.jsonl`, `dict.db`, `dict.db.gz`)은 git에 넣지 않는다. 다른 컴퓨터에서 작업할 때 받는 방법은 `en-en/README.md`에 있다.
+용량이 큰 파일(`kaikki-en.jsonl`, `dict.db`, `dict.db.gz`)은 git에 넣지 않는다. 원본은 `python3 fetch_data.py`로 받고, DB는 빌드해서 만든다.
 
 ---
 
@@ -64,6 +65,7 @@ marginalia-dictionary/
 ```bash
 cd ~/marginalia-dictionary
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 fetch_data.py        # git에 없는 원본 받기 (--list로 목록, 끊기면 이어받음)
 
 # 영영사전 조회
 .venv/bin/python en-en/scripts/dict.py object

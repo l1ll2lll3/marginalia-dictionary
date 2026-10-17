@@ -20,9 +20,8 @@ Wiktionary(kaikki.org) 기반 영어 사전. 1.4M 항목 + 숙어 70K. 운영 �
 ## 다른 컴퓨터에서 받기
 
 ```bash
-curl -L -A "Mozilla/5.0" -o data/raw/kaikki-en.jsonl \
-  https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl
-python scripts/build_dict_db.py          # → data/build/dict.db (~3분)
+python ../fetch_data.py                  # kaikki-en.jsonl(3.3GB) + 교육과정 PDF, 끊기면 이어받음
+python scripts/build_dict_db.py          # → data/build/dict.db
 gzip -k data/build/dict.db               # 배포용 dict.db.gz
 ```
 
