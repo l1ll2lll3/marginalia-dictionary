@@ -83,7 +83,7 @@ cd en-en/app && ../../.venv/bin/python server.py
 ### 새 컴퓨터에서 (처음 한 번)
 
 ```bash
-git clone <이 리포> ~/marginalia-dictionary && cd ~/marginalia-dictionary
+git clone https://github.com/l1ll2lll3/marginalia-dictionary.git ~/marginalia-dictionary && cd ~/marginalia-dictionary
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python fetch_data.py                       # 원본 받기 (3.3GB, 끊기면 이어받음)
 .venv/bin/python en-en/scripts/build_dict_db.py      # dict.db (~45초)
