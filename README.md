@@ -122,7 +122,12 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 1. **배포 전에** 운영 DB의 `user_examples`를 백업하고 옮긴다 (`docs/schema.md`의 배포 함정 참고). 그다음 새 dict.db를 Fly에 올린다.
 2. 교육과정의 접사 파생형(un-, -ness … 36개)을 단어군으로 펼친다. 단순 접사 떼기는 오탐이 많아서 Wiktionary 어원(affix 템플릿)을 쓰는 방법을 검토한다.
 3. reading 리포의 `regrade_vocabulary.py`·`extract_pronunciations.py`가 이 사전(`word_levels`, `pronunciations`)을 읽도록 바꾼다. reading 쪽 작업이다.
-4. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
+4. **`shared/data/multilingual_dict.json`을 대체한다** (2026-10-17 결정). 6개 언어쌍 29MB인데 품질이 낮다. 역방향으로 뒤집은 데이터라 en_ko 키에 영어 뜻풀이 문장이 섞여 있고("integration, combination"), 한중·중한은 뜻이 엉킨다(酉 → 完全, 犬 → 개 같은 놈).
+   - dict.db에 `translations` 표를 만든다: kaikki-en(이미 있음)의 뜻별 `translations`에서 en→ko, en→zh를 뽑는다. 뜻(sense)이 같이 붙어 있어서 문맥에 맞는 번역을 고를 수 있다. 예: acquaintance (person) → ko 아는 사람·지인 / zh 熟人·相識.
+   - `merge_en_ko_dict.py`가 JSON 대신 이 표를 쓰게 바꾼다.
+   - ko·zh가 표제어인 쪽(ko-en, zh-en, ko-zh, zh-ko)은 KRDICT와 CC-CEDICT로 만든다.
+   - 다 되면 JSON을 리포에서 뺀다. reading 쪽에서 이 JSON을 쓰는 `api_server.py`(`/api/dictionary/lookup`)와 `add_vocab_translations.py`는 reading 세션에서 새 표로 바꾼다.
+5. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
 
 ## 라이선스
 
