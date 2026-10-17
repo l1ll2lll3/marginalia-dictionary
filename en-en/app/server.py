@@ -33,6 +33,41 @@ def get_db():
     return conn
 
 
+_TABLES = None
+
+
+def has_table(conn, name):
+    """word_levels·pronunciations는 새 빌드에만 있다. 옛 DB에서도 lookup이 돌게 한다."""
+    global _TABLES
+    if _TABLES is None:
+        _TABLES = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    return name in _TABLES
+
+
+def levels_for(conn, norm, pos=None):
+    """등급 목록. pos를 주면 그 품사 + 품사 구분 없는 체계('*')만."""
+    if not has_table(conn, "word_levels"):
+        return []
+    sql = ("SELECT pos, scheme, level, source, inherited_from FROM word_levels "
+           "WHERE word_normalized = ?")
+    args = [norm]
+    if pos == "name":
+        return []                       # 고유명사 항목에는 철자 단위 등급('*')도 붙이지 않는다
+    if pos is not None:
+        sql += " AND pos IN (?, '*')"
+        args.append(pos)
+    rows = conn.execute(sql + " ORDER BY scheme, pos", args).fetchall()
+    return [dict(r) for r in rows]
+
+
+def pronunciation_for(conn, norm, pos):
+    if not has_table(conn, "pronunciations"):
+        return None
+    row = conn.execute("SELECT ipa, variety, variant_of FROM pronunciations "
+                       "WHERE word_normalized = ? AND pos = ?", (norm, pos)).fetchone()
+    return dict(row) if row else None
+
+
 def init_examples_table():
     conn = get_db()
     conn.execute("""
@@ -62,6 +97,11 @@ def init_examples_table():
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
+
+
+@app.route("/test")
+def test_page():
+    return send_from_directory("static", "test.html")
 
 
 @app.route("/api/lookup")
@@ -107,6 +147,8 @@ def lookup():
             "word": row["word"],
             "pos": row["pos"],
             "ipa": row["ipa"],
+            "pronunciation": pronunciation_for(conn, norm, row["pos"]),
+            "levels": levels_for(conn, norm, row["pos"]),
             "etymology": row["etymology"],
             "senses": senses,
         })
@@ -120,8 +162,29 @@ def lookup():
         elif ety:
             seen_ety.add(ety)
 
+    levels = levels_for(conn, norm)
     conn.close()
-    return jsonify({"query": word, "results": results, "suggestions": []})
+    return jsonify({"query": word, "results": results, "levels": levels, "suggestions": []})
+
+
+@app.route("/api/stats")
+def stats():
+    """등급·발음 표 현황. 테스트 페이지(static/test.html)가 쓴다."""
+    conn = get_db()
+    out = {"words": conn.execute("SELECT COUNT(*) FROM words").fetchone()[0]}
+    if has_table(conn, "pronunciations"):
+        out["pronunciations"] = {r[0] or "?": r[1] for r in conn.execute(
+            "SELECT variety, COUNT(*) FROM pronunciations GROUP BY 1 ORDER BY 2 DESC")}
+    if has_table(conn, "word_levels"):
+        levels = {}
+        for scheme, level, source, n in conn.execute(
+                "SELECT scheme, level, source = 'inherited', COUNT(*) FROM word_levels "
+                "GROUP BY 1, 2, 3 ORDER BY 1, 2"):
+            slot = levels.setdefault(scheme, {}).setdefault(level, {"list": 0, "inherited": 0})
+            slot["inherited" if source else "list"] = n
+        out["levels"] = levels
+    conn.close()
+    return jsonify(out)
 
 
 @app.route("/api/idiom")
@@ -307,6 +370,6 @@ def flag_example(example_id):
 if __name__ == "__main__":
     # Local dev
     if not os.path.exists(DB_PATH):
-        DB_PATH = os.path.join(os.path.dirname(__file__), "..", "dict.db")
+        DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "build", "dict.db")
     init_examples_table()
     app.run(host="0.0.0.0", port=8080, debug=True)

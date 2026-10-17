@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marginalia Dictionary — 데이터 확인</title>
+<style>
+  :root {
+    --bg: #faf9f6; --card: #fff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e6e3dc;
+    --accent: #3b5bdb; --us: #1c7ed6; --uk: #c2255c; --unk: #868e96; --dia: #e8590c;
+    --a: #2f9e44; --b: #f08c00; --c: #c92a2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --card: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #33322f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.55 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; font: inherit; padding: 10px 12px; border: 1px solid var(--line);
+          border-radius: 8px; background: var(--card); color: var(--ink); }
+  button { font: inherit; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent);
+           color: #fff; cursor: pointer; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 20px; }
+  .chip { background: transparent; color: var(--muted); border: 1px solid var(--line);
+          padding: 3px 10px; border-radius: 999px; font-size: 13px; }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 14px 16px; margin-bottom: 12px; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+  .word { font-size: 18px; font-weight: 650; }
+  .pos { color: var(--muted); font-size: 13px; }
+  .ipa { font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", "Lucida Grande", serif; font-size: 16px; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 4px; color: #fff;
+         vertical-align: 2px; margin-left: 4px; }
+  .v-us { background: var(--us); } .v-uk { background: var(--uk); }
+  .v-unknown { background: var(--unk); } .v-dialect { background: var(--dia); }
+  .levels { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .lv { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
+  .lv b { font-weight: 650; }
+  .lv .src { color: var(--muted); font-size: 12px; }
+  .lv.A1 b, .lv.A2 b, .lv.elementary b { color: var(--a); }
+  .lv.B1 b, .lv.B2 b, .lv.middle_common b { color: var(--b); }
+  .lv.C1 b, .lv.C2 b, .lv.high_elective b { color: var(--c); }
+  .none { color: var(--muted); font-size: 13px; }
+  ol { margin: 8px 0 0; padding-left: 22px; }
+  li { margin: 2px 0; }
+  .ex { color: var(--muted); font-style: italic; font-size: 13px; }
+  .compare { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .summary { margin-bottom: 16px; }
+  details { margin-top: 32px; }
+  summary { cursor: pointer; color: var(--muted); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  td, th { border: 1px solid var(--line); padding: 4px 10px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  .err { color: var(--c); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Marginalia Dictionary — 데이터 확인</h1>
+  <p class="sub">dict.db의 품사별 발음(<code>pronunciations</code>)과 등급(<code>word_levels</code>)을 확인하는 테스트 페이지</p>
+
+  <form id="f">
+    <input id="q" placeholder="영어 단어 (예: object)" autocomplete="off" autofocus>
+    <button>찾기</button>
+  </form>
+  <div class="chips" id="chips"></div>
+
+  <div id="out"></div>
+
+  <details id="statsBox">
+    <summary>DB 현황</summary>
+    <div id="stats" class="table-wrap"></div>
+  </details>
+</main>
+
+<script>
+const SAMPLES = ["object", "refuse", "present", "went", "children", "colour", "painting",
+                 "trouble", "water", "new", "student", "fish", "shew", "discern", "disabled"];
+const SCHEME = { cefr: "CEFR", kr_curriculum_2022: "교육과정" };
+const KR = { elementary: "초등", middle_common: "중고 공통", high_elective: "고교 선택" };
+const SOURCE = { "cefr-j": "CEFR-J", octanove: "Octanove", "moe-2022": "교육부 2022", inherited: "상속" };
+
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+};
+
+function levelBadge(lv) {
+  const b = el("span", "lv " + lv.level);
+  b.append(SCHEME[lv.scheme] || lv.scheme, " ");
+  b.append(el("b", null, lv.scheme === "kr_curriculum_2022" ? KR[lv.level] || lv.level : lv.level));
+  if (lv.pos !== "*" && lv.scheme === "cefr") b.append(el("span", "src", " " + lv.pos));
+  let src = SOURCE[lv.source] || lv.source;
+  if (lv.inherited_from) src += (lv.source === "inherited" ? " ← " : " · 단어군 ") + lv.inherited_from;
+  b.append(el("span", "src", " (" + src + ")"));
+  return b;
+}
+
+function levelsRow(levels) {
+  const row = el("div", "levels");
+  if (!levels.length) row.append(el("span", "none", "등급 목록에 없음"));
+  levels.forEach((lv) => row.append(levelBadge(lv)));
+  return row;
+}
+
+function render(data) {
+  const out = $("#out");
+  out.replaceChildren();
+  if (!data.results.length) {
+    out.append(el("p", "none", "사전에 없음."));
+    if (data.suggestions.length) {
+      const chips = el("div", "chips");
+      data.suggestions.forEach((s) => chips.append(chip(s.word)));
+      out.append(chips);
+    }
+    return;
+  }
+
+  const sum = el("div", "card summary");
+  sum.append(el("div", "pos", "이 철자의 모든 등급"), levelsRow(data.levels || []));
+  out.append(sum);
+
+  data.results.forEach((r) => {
+    const card = el("div", "card");
+    const head = el("div", "head");
+    head.append(el("span", "word", r.word), el("span", "pos", r.pos));
+
+    const p = r.pronunciation;
+    if (p) {
+      const ipa = el("span", "ipa", p.ipa);
+      head.append(ipa);
+      const tag = el("span", "tag v-" + (p.variety || "unknown"), p.variety || "?");
+      ipa.append(tag);
+      if (p.variant_of) head.append(el("span", "pos", "← " + p.variant_of + " 발음"));
+    } else {
+      head.append(el("span", "none", "발음 없음"));
+    }
+    card.append(head);
+    if (r.ipa && p && r.ipa !== p.ipa) {
+      card.append(el("div", "compare", "이 어원 항목 자체의 발음: " + r.ipa));
+    }
+
+    card.append(levelsRow(r.levels || []));
+
+    const ol = el("ol");
+    r.senses.slice(0, 4).forEach((s) => {
+      const li = el("li", null, s.gloss);
+      if (s.example) li.append(el("div", "ex", s.example));
+      ol.append(li);
+    });
+    if (r.senses.length > 4) ol.append(el("li", "none", `… 외 ${r.senses.length - 4}개`));
+    card.append(ol);
+    out.append(card);
+  });
+}
+
+async function lookup(word) {
+  word = word.trim();
+  if (!word) return;
+  $("#q").value = word;
+  history.replaceState(null, "", "?w=" + encodeURIComponent(word));
+  try {
+    const res = await fetch("/api/lookup?word=" + encodeURIComponent(word));
+    render(await res.json());
+  } catch (e) {
+    $("#out").replaceChildren(el("p", "err", "API 호출 실패: " + e.message +
+      " — 이 페이지는 server.py가 띄운 주소(/test)로 열어야 한다."));
+  }
+}
+
+function chip(word) {
+  const c = el("button", "chip", word);
+  c.type = "button";
+  c.onclick = () => lookup(word);
+  return c;
+}
+
+async function loadStats() {
+  try {
+    const s = await (await fetch("/api/stats")).json();
+    const box = $("#stats");
+    box.replaceChildren(el("p", "none", `words ${s.words.toLocaleString()}행`));
+    if (s.pronunciations) {
+      const t = el("table");
+      t.append(row(["발음 변종", "개수"], "th"));
+      Object.entries(s.pronunciations).forEach(([k, v]) => t.append(row([k, v.toLocaleString()])));
+      box.append(t);
+    }
+    Object.entries(s.levels || {}).forEach(([scheme, levels]) => {
+      const t = el("table");
+      t.append(row([SCHEME[scheme] || scheme, "목록", "상속", "합계"], "th"));
+      Object.entries(levels).forEach(([lv, n]) =>
+        t.append(row([KR[lv] || lv, n.list, n.inherited, n.list + n.inherited].map(String))));
+      box.append(t);
+    });
+  } catch (e) { /* stats는 없어도 된다 */ }
+}
+
+function row(cells, tag = "td") {
+  const tr = el("tr");
+  cells.forEach((c) => tr.append(el(tag, null, c)));
+  return tr;
+}
+
+SAMPLES.forEach((w) => $("#chips").append(chip(w)));
+$("#f").onsubmit = (e) => { e.preventDefault(); lookup($("#q").value); };
+$("#statsBox").ontoggle = () => { if ($("#statsBox").open) loadStats(); };
+lookup(new URLSearchParams(location.search).get("w") || "object");
+</script>
+</body>
+</html>
