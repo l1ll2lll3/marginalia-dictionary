@@ -20,10 +20,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
-
-The MIT License above covers the source code in this repository.
-Data files under */data/ are derived from third-party sources and remain under
-their original licenses (Wiktionary/kaikki.org, CC-CEDICT and Octanove:
-CC BY-SA; CEFR-J: free use with attribution; Korean national curriculum list:
-public government notice). See README.md for details.
