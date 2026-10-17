@@ -1,10 +1,18 @@
 # DB 스키마
 
-## 1. en-en: `en-en/data/build/dict.db` (현재)
+## 1. en-en: `en-en/data/build/dict.db`
 
-Marginalia Dictionary(https://marginalia-dict.fly.dev/)가 쓰는 SQLite DB다. `en-en/scripts/build_dict_db.py`가 kaikki Wiktionary JSONL에서 만든다.
-- 압축본 `dict.db.gz`는 142MB, 풀면 319MB다.
-- 마지막 빌드는 2026-04, 2.5GB 덤프 기준이다. `data/raw/kaikki-en.jsonl`(3.1GB, 2026-09 다운로드)로 다시 빌드하면 숫자가 바뀐다.
+Marginalia Dictionary(https://marginalia-dict.fly.dev/)가 쓰는 SQLite DB다. 두 단계로 만든다.
+
+```bash
+.venv/bin/python en-en/scripts/build_dict_db.py        # words, senses, idioms, word_links, pronunciations (~45초)
+.venv/bin/python en-en/scripts/parse_kr_curriculum.py  # 교육과정 PDF → CSV (CSV는 git에 있으니 보통 생략)
+.venv/bin/python en-en/scripts/build_levels.py         # word_levels (~10초)
+```
+
+- 2026-10-17 빌드 기준이다 (`kaikki-en.jsonl` 2026-09 덤프). 크기 430MB.
+- 운영 서버(Fly)에는 아직 2026-04 빌드(319MB, 등급·품사별 발음 없음)가 올라가 있다. 배포 전에 아래 user_examples 함정을 볼 것.
+- 이전 빌드는 비교용으로 `dict.pre-rebuild.db`에 남겨뒀다 (gitignore).
 
 ### words — 표제어 × 품사 × 어원 항목
 
@@ -14,7 +22,8 @@ CREATE TABLE words (
     word            TEXT NOT NULL,   -- 원래 표기 (mediævalism)
     word_normalized TEXT NOT NULL,   -- 소문자 + 고어 문자 정규화 (æ→ae, œ→oe, é→e …)
     pos             TEXT,            -- kaikki 품사: noun, verb, adj, adv, name, phrase …
-    ipa             TEXT,            -- 발음 1개. "US 우선, 없으면 첫 번째" (아래 '알려진 문제' 참고)
+    ipa             TEXT,            -- 이 어원 항목의 발음. extract_pronunciations._pick_ipa()로 고름
+    ipa_variety     TEXT,            -- us | uk | unknown | dialect
     etymology       TEXT             -- 어원, 300자에서 자름
 );
 CREATE INDEX idx_words_normalized ON words(word_normalized);
@@ -23,14 +32,14 @@ CREATE INDEX idx_words_word ON words(word);
 
 | 항목 | 값 |
 |---|---|
-| 행 | 1,403,717 |
-| 서로 다른 word | 1,309,296 |
-| (word, pos)가 겹치는 경우 | 13,125쌍. Wiktionary가 어원별로 항목을 나눠서 그렇다 (refuse: noun 2행) |
-| ipa 있음 | 126,882 (9%) |
-| etymology 있음 | 506,035 |
-| pos 상위 | noun 788K · verb 210K · adj 179K · name 178K · adv 27K |
+| 행 | 1,492,836 |
+| 서로 다른 word | 1,390,507 |
+| (word_normalized, pos)가 겹치는 경우 | 32,903쌍. 어원별 항목 분리(refuse: noun 2행)와 대소문자 차이(Polish/polish) |
+| ipa 있음 | 139,263 |
+| etymology 있음 | 535,573 |
+| pos 상위 | noun 832K · verb 222K · name 201K · adj 186K · adv 28K |
 
-**행 하나 = kaikki JSONL 한 줄.** 그래서 (word, pos)는 유일하지 않다. 등급이나 발음을 (word, pos)에 붙일 때는 이 점에 주의해야 한다.
+**행 하나 = kaikki JSONL 한 줄.** 그래서 (word, pos)는 유일하지 않다. 그래서 (단어, 품사) 단위 값은 `pronunciations`와 `word_levels`에 따로 둔다.
 
 ### senses — 뜻
 
@@ -44,7 +53,27 @@ CREATE TABLE senses (
 );
 CREATE INDEX idx_senses_word_id ON senses(word_id);
 ```
-1,677,158행, 예문이 있는 행은 335,593.
+1,785,991행, 예문이 있는 행은 363,415.
+
+### word_links — 원형 연결
+
+```sql
+CREATE TABLE word_links (
+    word_id INTEGER NOT NULL REFERENCES words(id),
+    target  TEXT NOT NULL,   -- 원형 (원래 표기)
+    kind    TEXT NOT NULL,   -- form_of | alt_of | spelling
+    tags    TEXT             -- 첫 뜻의 태그, 공백 구분 ("form-of past", "alt-of archaic" …)
+);
+CREATE INDEX idx_links_word ON word_links(word_id);
+```
+
+| kind | 출처 | 행 | 예 |
+|---|---|---|---|
+| `form_of` | 첫 뜻의 구조화 필드 `form_of` | 535,688 | went → go, children → child |
+| `alt_of` | 첫 뜻의 구조화 필드 `alt_of` | 151,602 | craftman → craftsman |
+| `spelling` | `_variant_target()`: 뜻풀이의 "… spelling of X" 등. 굴절형·약어는 제외 | 119,153 | colour → color |
+
+등급 상속(`build_levels.py`)과 철자 변형의 발음 채우기(`pronunciations.variant_of`)에 쓴다. **첫 뜻만** 본다. 첫 뜻이 고유한 의미인 항목(found = 설립하다)이 다른 뜻 때문에 원형을 물려받지 않게 하려는 것이다.
 
 ### idioms — 숙어
 
@@ -86,14 +115,14 @@ CREATE INDEX idx_ue_lemma ON user_examples (lemma, status, score DESC);
 
 ### 알려진 문제
 
-- **품사별 발음이 틀린 경우가 있다.** `object|verb`의 ipa가 명사 발음 `/ˈɑb.d͡ʒɛkt/`이다. 빌드 스크립트가 "US 태그 우선, 없으면 첫 번째"로만 고르기 때문이다. 품사·강세·영국식 기호·축약형까지 따지는 개선된 선택 로직은 `scripts/extract_pronunciations.py`의 `_pick_ipa()`에 있다 (2026-09-28, reading 리포의 버그 리포트 1~3번을 반영). 이 로직을 `build_dict_db.py`에 옮기는 것이 다음 작업이다.
-- 발음 기호에 파찰음 tie bar(`d͡ʒ`)가 남아 있다. reading 쪽 산출물에서는 없앴다 (`912855d`).
+- 발음 기호에 파찰음 tie bar(`d͡ʒ`)가 남아 있다. 원본 그대로 두고, 표시할 때 정리한다 (reading 쪽 산출물에서는 없앴다, `912855d`).
+- 발음 선택은 휴리스틱이라 남은 오류가 있다. 원본에 미국식 표준형이 아예 없으면 영국식이나 지역 발음이 뽑힌다 (onto → /ˈɒn.tuː/는 미국식이 전부 Northern-US·Midland 태그라 RP가 선택됨). 등급이 있는 단어 14,443쌍 중 영국식 기호 비율은 1.3%다.
 
 ---
 
-## 2. 추가 예정: 등급 (`word_levels`)
+## 2. 등급 (`word_levels`)
 
-결정 배경은 `docs/grading_sources.md` §5에 있다. 등급 체계가 여러 개(CEFR, 한국 교육과정, 앞으로 KRDICT·HSK)라서 `words`에 칸을 계속 추가하지 않고 별도 표로 둔다.
+결정 배경은 `docs/grading_sources.md` §5에 있다. 등급 체계가 여러 개(CEFR, 한국 교육과정, 앞으로 KRDICT·HSK)라서 `words`에 칸을 계속 추가하지 않고 별도 표로 둔다. `en-en/scripts/build_levels.py`가 만든다.
 
 ```sql
 CREATE TABLE word_levels (
@@ -102,33 +131,51 @@ CREATE TABLE word_levels (
     scheme          TEXT NOT NULL,   -- 'cefr' | 'kr_curriculum_2022' | (나중에) 'krdict' | 'hsk3'
     level           TEXT NOT NULL,   -- cefr: A1~C2 / kr_curriculum_2022: elementary | middle_common | high_elective
     source          TEXT NOT NULL,   -- 'cefr-j' | 'octanove' | 'moe-2022' | 'inherited'
-    inherited_from  TEXT,            -- source='inherited'일 때 원형 (colour → color)
+    inherited_from  TEXT,            -- inherited: 원형 (went → go) / moe-2022: 단어군 대표형 (colour → color)
     PRIMARY KEY (word_normalized, pos, scheme)
 );
 CREATE INDEX idx_levels_word ON word_levels(word_normalized);
 ```
 
+| scheme | 목록 | 상속 | 분포 |
+|---|---|---|---|
+| `cefr` | 9,912 | 12,433 | A1 2,656 · A2 3,167 · B1 5,665 · B2 6,538 · C1 2,314 · C2 2,005 |
+| `kr_curriculum_2022` | 3,283 | 9,110 | elementary 3,559 · middle_common 4,935 · high_elective 3,899 |
+
 규칙:
 - **목록에 있는 것만 넣는다.** 행이 없으면 "목록에 없음"이다. 빈도로 추정한 값은 넣지 않는다.
 - 한 (word, pos, scheme)에 여러 값이 겹치면 낮은 등급을 남긴다 (학습자가 처음 만나는 수준이 그 단어의 문턱).
-- 교육과정 목록은 단어군 단위다. 굴절형과 36개 접사 파생형은 `inherited`로 펼친다. 단, 의존 어근 파생(precious)은 제외한다.
-- 교육과정 목록에 없는 단어는 "교육과정 밖"이다. 이것도 행을 만들지 않고, 행이 없는 것으로 표현한다.
-- 등급은 (word, pos)에 붙인다. 같은 (word, pos)에 어원 항목이 여러 개여도 등급은 하나다.
+- **cefr**: 목록의 (단어, 품사)를 kaikki 품사로 옮겨 넣는다 (`adjective`→`adj`, `modal auxiliary`→`verb`, `determiner`→`det`·`article` …). 사전에 같은 (단어, 품사)가 없는 목록 항목 114개는 넣지 않았다 (대부분 `a few` 같은 여러 단어 한정사).
+- **kr_curriculum_2022**: 품사 구분이 없어 `pos='*'`. 원문의 대표형·철자 이형·괄호 속 파생형을 `en-en/data/kr_curriculum/moe_2022_basic_vocab.csv`(3,283행)로 뽑아 넣는다. 지침은 800/1,200/1,000개라고 하는데, 실제로 세면 초등이 801개다 (중복·파싱 오류가 없는 것은 확인함).
+- **상속**: 그 (단어, 품사)의 첫 항목이 `word_links`로 원형을 가리키고, 첫 뜻의 태그가 전부 굴절·표준 이형 태그(`INHERIT_OK_TAGS`)일 때만 원형의 등급을 가져온다. 그래서 shew(고어), temperment(오용), ur(인터넷) 같은 것은 물려받지 않는다. 원형도 목록에서 직접 온 등급이어야 한다 (상속의 상속은 하지 않음).
+- **아직 안 한 것**: 교육과정 지침의 "36개 접사 파생형"(un-, -ness …)은 펼치지 않았다. kindness를 kind의 단어군으로 넣으려면 접사 분석이 필요한데, 단순 접사 떼기는 오탐이 많다(uncle ≠ un + cle).
+- 고유명사 항목(`pos='name'`)에는 서버가 `'*'` 등급을 붙이지 않는다 (Went 강 ≠ went).
 
-## 3. 추가 예정: 품사별 발음 (`pronunciations`)
+## 3. 품사별 발음 (`pronunciations`)
 
 ```sql
 CREATE TABLE pronunciations (
     word_normalized TEXT NOT NULL,
     pos             TEXT NOT NULL,
     ipa             TEXT NOT NULL,   -- 음소 표기 /…/ 만
-    variety         TEXT,            -- 'US' | 'unknown' | 'UK' …
+    variety         TEXT,            -- us | uk | unknown | dialect
     variant_of      TEXT,            -- 철자 변형이라 원형 발음을 가져온 경우 (colour → color)
     PRIMARY KEY (word_normalized, pos)
 );
 ```
 
-`scripts/extract_pronunciations.py`의 캐시 `data/build/pronunciations_en.json`(7,736쌍, 키 `lemma|POS`)이 이 표의 일부다. 지금은 Marginalia 책 표제어만 담겨 있다. 사전 전체로 넓히려면 `--book` 대신 kaikki 전체를 대상으로 돌리게 바꿔야 한다.
+- (단어, 품사)마다 Wiktionary 순서상 첫 항목(주된 뜻)의 발음을 쓴다. 대소문자만 다른 항목이 있으면 소문자 쪽을 먼저 본다.
+- 직접 129,226쌍 + 철자 변형에서 가져온 것 42,577쌍 = 171,803쌍.
+- 이전 빌드 대비 영국식 기호(ɒ·əʊ·ɜː) 비율이 14.4% → 6.9%다. 등급이 있는 단어만 보면 1.3%다.
+- variety 분포: unknown 82,161 · us 75,110 · uk 12,948 · dialect 1,584. dialect는 표준형 후보가 아예 없는 단어다.
+- 선택 로직은 `en-en/scripts/extract_pronunciations.py`의 `_pick_ipa()`에 있다. 2026-10-17에 사전 전체에 적용하면서 고친 것:
+  - 지역 방언 판정을 허용 목록 방식으로 바꿈 (fall /faːl/, fish /fɘʃ/ 방지)
+  - note 칸 해석: 지역명이 있으면 방언, US/RP 표기, 축약(flapping)
+  - 구별 부호와 j만 다른 것은 축약형으로 보지 않음 (fish, student /ˈstu.dn̩t/)
+  - tr 파찰음화 (interesting /ˈɪnt͡ʃɹ…/)
+  - 표준 태그가 있을 때 태그 없는 부차 변형 감점 (thank /ðæŋk/)
+  - British Southern Standard(새 영국식 표기)를 전통 RP 뒤에 둠
+- reading 리포의 `gutenberg/extract_pronunciations.py`는 이 수정 전 버전이다. 책 데이터에 다시 적용하려면 이쪽 로직을 쓴다.
 
 ---
 

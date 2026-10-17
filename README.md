@@ -42,12 +42,15 @@ marginalia-dictionary/
 ├── en-en/
 │   ├── scripts/
 │   │   ├── build_dict_db.py          kaikki JSONL → dict.db
+│   │   ├── build_levels.py           dict.db + word_levels (CEFR, 교육과정)
+│   │   ├── parse_kr_curriculum.py    교육과정 PDF → CSV
 │   │   ├── dict.py                   CLI 조회
 │   │   ├── extract_pronunciations.py 품사별 미국식 발음 선택 (개선된 로직)
 │   │   └── cefr_grading.py           CEFR-J + Octanove 등급 판정
-│   ├── app/                          Fly.io 웹앱 (server.py, static/, Dockerfile, fly.toml)
+│   ├── app/                          Fly.io 웹앱 (server.py, static/index.html, static/test.html)
 │   ├── data/raw/                     kaikki-en.jsonl (3.1GB), english_idioms.json
 │   ├── data/cefr/                    CEFR-J 1.5, Octanove 1.0 CSV + 라이선스 메모
+│   ├── data/kr_curriculum/           교육과정 기본 어휘 CSV
 │   └── data/build/                   dict.db(.gz), pronunciations_en.json
 ├── en-ko/  scripts/ + data/
 ├── zh-en/  data/
@@ -98,12 +101,12 @@ python3 fetch_data.py        # git에 없는 원본 받기 (--list로 목록, �
 
 ## 다음 작업
 
-1. `build_dict_db.py`에 `extract_pronunciations._pick_ipa()`를 적용하고, 새 덤프로 다시 빌드한다.
-2. `word_levels` 표를 만들고 CEFR-J + Octanove를 넣는다. 철자 변형·굴절형 상속도 포함한다.
-3. 교육과정 기본어휘 PDF를 파싱한다. 3,000단어군 → `kr_curriculum_2022`.
-4. **배포 전에** 운영 DB의 `user_examples`를 백업하고 옮긴다 (`docs/schema.md`의 배포 함정 참고).
-5. reading 리포의 `regrade_vocabulary.py`가 `word_levels`를 읽도록 바꾼다. 이 작업은 reading 쪽에서 한다.
-6. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en).
+완료 (2026-10-17): 개선된 발음 선택을 사전 전체에 적용(`pronunciations`), 등급 표 `word_levels`(CEFR + 교육과정, 굴절형·철자 이형 상속), 교육과정 PDF 파싱, 데이터 확인 페이지(`/test`).
+
+1. **배포 전에** 운영 DB의 `user_examples`를 백업하고 옮긴다 (`docs/schema.md`의 배포 함정 참고). 그다음 새 dict.db를 Fly에 올린다.
+2. 교육과정의 접사 파생형(un-, -ness … 36개)을 단어군으로 펼친다. 단순 접사 떼기는 오탐이 많아서 Wiktionary 어원(affix 템플릿)을 쓰는 방법을 검토한다.
+3. reading 리포의 `regrade_vocabulary.py`·`extract_pronunciations.py`가 이 사전(`word_levels`, `pronunciations`)을 읽도록 바꾼다. reading 쪽 작업이다.
+4. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
 
 ## 라이선스
 

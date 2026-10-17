@@ -44,6 +44,9 @@ Marginalia(문학으로 언어를 배우는 읽기 도구)에서 쓰는 다국�
 - KRDICT API는 브라우저 User-Agent가 없으면 WAF에 막히고(`400 Request Blocked`), `num`은 10~100만 허용한다.
 - `shared/scripts/build_multilingual_dict.py`는 `raw-wiktextract-data.jsonl`(전 언어 Wiktionary, 10.2M 항목)이 필요한데 이 Mac에는 없다. `shared/data/raw/`에 받아둘 것: https://kaikki.org/dictionary/rawdata.html
 
+- 발음 선택 로직(`en-en/scripts/extract_pronunciations.py`)은 2026-10-17에 사전 전체로 넓히면서 많이 고쳤다. reading의 같은 이름 파일은 그 전 버전이다. 바꿀 때는 `docs/schema.md` §3의 사례(fish, fall, student, thank, onto …)로 회귀를 확인할 것.
+- 확인용 페이지: `en-en/app`에서 서버를 띄우고 `/test`.
+
 ## 다음 작업
 
-`README.md`의 "다음 작업"을 볼 것. 1순위는 `build_dict_db.py`에 개선된 발음 선택 로직을 넣고, `word_levels` 표를 만드는 것이다.
+`README.md`의 "다음 작업"을 볼 것. 1순위는 운영 DB의 user_examples를 백업한 뒤 새 dict.db를 배포하는 것이다.
