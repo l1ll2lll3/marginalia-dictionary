@@ -58,6 +58,7 @@ def build():
         DROP TABLE IF EXISTS idioms;
         DROP TABLE IF EXISTS word_links;
         DROP TABLE IF EXISTS pronunciations;
+        DROP TABLE IF EXISTS word_levels;   -- 옛 데이터 기준이라 남겨두면 안 된다. build_levels.py로 다시 만든다
 
         CREATE TABLE words (
             id INTEGER PRIMARY KEY,
