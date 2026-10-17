@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginalia Dictionary</title>
+<script>
+(function (w, h, _a, t, a, b) {
+    w = w[a] = w[a] || {
+      config: {
+        projectAccessKey: "x604ku488n0uq-x2gsksptdlb10r-x4aa021lo6ro0e",
+        pcode: 38129,
+        sampleRate: 100,
+        proxyBaseUrl: "https://rum-ap-northeast-2.whatap-browser-agent.io/",
+      },
+    };
+    a = h.createElement(_a);
+    a.async = 1;
+    a.src = t;
+    t = h.getElementsByTagName(_a)[0];
+    t.parentNode.insertBefore(a, t);
+  })(window, document, 'script', 'https://repo.whatap-browser-agent.io/rum/prod/v1/whatap-browser-agent.js', 'WhatapBrowserAgent', '');
+</script>
+<style>
+  :root { --bg: #faf8f5; --card: #fff; --border: #e0dcd6; --text: #2c2c2c;
+          --muted: #8a8580; --accent: #b8860b; --ipa: #6a5acd; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, 'Times New Roman', serif; background: var(--bg);
+         color: var(--text); min-height: 100vh; }
+
+  header { text-align: center; padding: 2.5rem 1rem 1rem; }
+  header h1 { font-size: 1.6rem; font-weight: normal; letter-spacing: 0.05em; }
+  header p { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
+
+  .search-box { max-width: 540px; margin: 1.5rem auto; padding: 0 1rem; }
+  .search-row { display: flex; gap: 0.5rem; }
+  .search-row input { flex: 1; padding: 0.7rem 1rem; font-size: 1rem;
+    font-family: inherit; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--card); outline: none; }
+  .search-row input:focus { border-color: var(--accent); }
+  .search-row button { padding: 0.7rem 1.2rem; font-size: 1rem; font-family: inherit;
+    background: var(--text); color: var(--bg); border: none; border-radius: 6px;
+    cursor: pointer; }
+  .search-row button:hover { background: #444; }
+  .tabs { display: flex; gap: 0; margin-top: 0.6rem; }
+  .tabs button { flex: 1; padding: 0.4rem; font-size: 0.85rem; font-family: inherit;
+    background: none; border: 1px solid var(--border); border-radius: 0; cursor: pointer;
+    color: var(--muted); }
+  .tabs button:first-child { border-radius: 4px 0 0 4px; }
+  .tabs button:last-child { border-radius: 0 4px 4px 0; }
+  .tabs button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  #results { max-width: 540px; margin: 0 auto; padding: 0 1rem 3rem; }
+
+  .entry { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+           padding: 1.2rem; margin-bottom: 0.8rem; }
+  .entry-header { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+  .entry-word { font-size: 1.3rem; font-weight: bold; }
+  .entry-pos { font-size: 0.85rem; color: var(--muted); background: #f0ede8;
+               padding: 0.15rem 0.5rem; border-radius: 3px; }
+  .entry-ipa { font-size: 0.9rem; color: var(--ipa); }
+  .senses { margin-top: 0.8rem; }
+  .sense { margin-bottom: 0.5rem; padding-left: 1.2rem; text-indent: -1.2rem; }
+  .sense-num { color: var(--muted); font-size: 0.85rem; margin-right: 0.3rem; }
+  .sense-example { display: block; text-indent: 0; padding-left: 1.2rem;
+                   color: var(--muted); font-style: italic; font-size: 0.9rem;
+                   margin-top: 0.15rem; }
+  .etymology { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border);
+               font-size: 0.85rem; color: var(--muted); }
+  .etymology strong { color: var(--text); font-weight: normal; }
+
+  /* User examples (design/64) */
+  .user-examples { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border); }
+  .user-examples-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em;
+                          color: var(--muted); margin-bottom: 0.5rem; }
+  .user-ex { padding: 0.5rem 0.7rem; border-left: 3px solid #c8b97a; background: #fdf9f0;
+              border-radius: 0 4px 4px 0; margin-bottom: 0.5rem; font-size: 0.88rem;
+              font-style: italic; color: #444; }
+  .user-ex .ex-source { font-style: normal; font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; display: flex; align-items: center; gap: 0.5rem; }
+  .user-ex .ex-source .vote-btn { cursor: pointer; background: none; border: none;
+                                   font-size: 0.75rem; color: var(--muted); padding: 0; }
+  .user-ex .ex-source .vote-btn:hover { color: var(--accent); }
+  .contribute-toggle { font-size: 0.8rem; color: var(--accent); cursor: pointer;
+                        margin-top: 0.4rem; display: inline-block; }
+  .contribute-toggle:hover { text-decoration: underline; }
+  .contribute-form { margin-top: 0.6rem; display: none; }
+  .contribute-form textarea { width: 100%; padding: 0.5rem; font-family: inherit;
+                               font-size: 0.85rem; border: 1px solid var(--border);
+                               border-radius: 4px; resize: vertical; min-height: 64px; }
+  .contribute-form textarea:focus { outline: none; border-color: var(--accent); }
+  .contribute-form .cf-row { display: flex; gap: 0.5rem; margin-top: 0.4rem; align-items: center; }
+  .contribute-form input[type=text] { flex: 1; padding: 0.35rem 0.6rem; font-family: inherit;
+                                       font-size: 0.82rem; border: 1px solid var(--border);
+                                       border-radius: 4px; }
+  .contribute-form input[type=text]:focus { outline: none; border-color: var(--accent); }
+  .contribute-form button { padding: 0.35rem 0.9rem; font-family: inherit; font-size: 0.82rem;
+                             background: var(--accent); color: #fff; border: none;
+                             border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  .contribute-form button:hover { background: #9a720a; }
+  .contribute-form .cf-hint { font-size: 0.72rem; color: var(--muted); }
+
+  .idiom-entry { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+                 padding: 1rem 1.2rem; margin-bottom: 0.6rem; }
+  .idiom-phrase { font-size: 1.1rem; font-weight: bold; }
+  .idiom-tag { font-size: 0.8rem; color: var(--accent); margin-left: 0.4rem; }
+  .idiom-meaning { margin-top: 0.3rem; color: var(--muted); }
+
+  .suggestion { padding: 0.5rem 0; color: var(--muted); font-size: 0.9rem; }
+  .suggestion a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .suggestion a:hover { text-decoration: underline; }
+
+  .empty { text-align: center; color: var(--muted); padding: 2rem; font-size: 0.95rem; }
+
+  .loading { text-align: center; padding: 2rem; color: var(--muted); }
+
+  /* Popup dictionary */
+  .popup-dict { position: fixed; z-index: 1000; background: var(--card);
+    border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    padding: 0.8rem 1rem; max-width: 360px; min-width: 200px; font-size: 0.9rem;
+    animation: popIn 0.15s ease-out; }
+  @keyframes popIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+  .popup-dict .popup-word { font-size: 1.1rem; font-weight: bold; }
+  .popup-dict .popup-pos { font-size: 0.8rem; color: var(--muted); background: #f0ede8;
+    padding: 0.1rem 0.4rem; border-radius: 3px; margin-left: 0.4rem; }
+  .popup-dict .popup-ipa { font-size: 0.85rem; color: var(--ipa); margin-left: 0.4rem; }
+  .popup-dict .popup-gloss { margin-top: 0.4rem; line-height: 1.4; }
+  .popup-dict .popup-gloss-num { color: var(--muted); font-size: 0.8rem; margin-right: 0.2rem; }
+  .popup-dict .popup-more { margin-top: 0.4rem; }
+  .popup-dict .popup-more a { color: var(--accent); cursor: pointer; text-decoration: none;
+    font-size: 0.85rem; }
+  .popup-dict .popup-more a:hover { text-decoration: underline; }
+  .popup-dict .popup-loading { color: var(--muted); font-style: italic; }
+  .popup-dict .popup-notfound { color: var(--muted); }
+  .popup-dict .popup-idiom-tag { font-size: 0.75rem; color: var(--accent); margin-left: 0.3rem; }
+
+  footer { text-align: center; padding: 1rem; color: var(--muted); font-size: 0.75rem;
+           border-top: 1px solid var(--border); margin-top: 2rem; }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  @media (max-width: 480px) {
+    header h1 { font-size: 1.3rem; }
+    .entry { padding: 1rem; }
+    .entry-word { font-size: 1.1rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Marginalia Dictionary</h1>
+  <p>1.4M words &middot; 70K idioms &middot; Wiktionary</p>
+</header>
+
+<div class="search-box">
+  <div class="search-row">
+    <input type="text" id="q" placeholder="bourdon, a piece of cake, take account, medi*"
+           autocomplete="off" autofocus>
+    <button onclick="doSearch()">Look up</button>
+  </div>
+  <div class="tabs">
+    <button class="active" data-mode="word" onclick="setMode('word')">Word</button>
+    <button data-mode="idiom" onclick="setMode('idiom')">Idiom</button>
+    <button data-mode="search" onclick="setMode('search')">Search</button>
+  </div>
+</div>
+
+<div id="results"></div>
+
+<footer>
+  Dictionary data from <a href="https://en.wiktionary.org/" target="_blank">Wiktionary</a>
+  (CC BY-SA 3.0) &middot; Marginalia
+</footer>
+
+<script>
+let mode = 'word';
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.tabs button').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === m));
+}
+
+function autoMode(q) {
+  if (q.includes('*') || q.includes('?')) return 'search';
+  if (q.includes(' ')) return 'idiom';
+  return 'word';
+}
+
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+async function doSearch() {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+
+  const detected = autoMode(q);
+  setMode(detected);
+
+  const el = document.getElementById('results');
+  el.innerHTML = '<div class="loading">Looking up...</div>';
+
+  try {
+    if (mode === 'word') {
+      await lookupWord(q, el);
+    } else if (mode === 'idiom') {
+      await lookupIdiom(q, el);
+    } else {
+      await searchWords(q, el);
+    }
+  } catch (err) {
+    el.innerHTML = `<div class="empty">Error: ${err.message}</div>`;
+  }
+}
+
+async function lookupWord(q, el) {
+  const res = await fetch(`/api/lookup?word=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  let html = '';
+
+  if (data.results.length === 0) {
+    if (data.suggestions.length > 0) {
+      html = '<div class="suggestion">Did you mean: ' +
+        data.suggestions.map(s =>
+          `<a onclick="document.getElementById('q').value='${s.word}';doSearch()">${s.word}</a>`
+        ).join(', ') + '?</div>';
+    } else {
+      // Try idiom fallback
+      const res2 = await fetch(`/api/idiom?phrase=${encodeURIComponent(q)}`);
+      const data2 = await res2.json();
+      if (data2.results.length > 0) {
+        setMode('idiom');
+        html = renderIdioms(data2.results);
+      } else {
+        html = `<div class="empty">No results for "${q}"</div>`;
+      }
+    }
+  } else {
+    for (const entry of data.results) {
+      html += '<div class="entry"><div class="entry-header">';
+      html += `<span class="entry-word">${esc(entry.word)}</span>`;
+      if (entry.pos) html += `<span class="entry-pos">${esc(entry.pos)}</span>`;
+      if (entry.ipa) html += `<span class="entry-ipa">${esc(entry.ipa)}</span>`;
+      html += '</div><div class="senses">';
+      for (const s of entry.senses.slice(0, 8)) {
+        html += `<div class="sense"><span class="sense-num">${s.num}.</span> ${esc(s.gloss)}`;
+        if (s.example) html += `<span class="sense-example">${esc(s.example.substring(0, 150))}</span>`;
+        html += '</div>';
+      }
+      if (entry.senses.length > 8) {
+        html += `<div class="sense" style="color:var(--muted)">+${entry.senses.length - 8} more</div>`;
+      }
+      html += '</div>';
+      if (entry.etymology) {
+        html += `<div class="etymology"><strong>Etymology:</strong> ${esc(entry.etymology)}</div>`;
+      }
+      html += `<div class="user-examples" id="ux-${esc(entry.word)}">
+        <div class="user-examples-title">Reader examples</div>
+        <div class="ux-list" data-lemma="${esc(entry.word.toLowerCase())}"><span style="color:var(--muted);font-size:.8rem">Loading…</span></div>
+        <span class="contribute-toggle" onclick="toggleContribute(this, '${esc(entry.word.toLowerCase())}')">+ Add example sentence</span>
+        <div class="contribute-form">
+          <textarea placeholder="Paste a sentence containing &quot;${esc(entry.word)}&quot;…"></textarea>
+          <div class="cf-row">
+            <input type="text" placeholder="Source (optional): book title, website…" class="cf-source">
+            <button onclick="submitExample(this, '${esc(entry.word.toLowerCase())}')">Submit</button>
+          </div>
+          <div class="cf-hint">Sentences with this word in context help other readers.</div>
+        </div>
+      </div>`;
+      html += '</div>';
+    }
+  }
+  el.innerHTML = html;
+  // Load user examples for each entry
+  el.querySelectorAll('.ux-list').forEach(el => loadExamples(el));
+}
+
+async function lookupIdiom(q, el) {
+  const res = await fetch(`/api/idiom?phrase=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  if (data.results.length === 0) {
+    el.innerHTML = `<div class="empty">No idiom found for "${esc(q)}"</div>`;
+  } else {
+    el.innerHTML = renderIdioms(data.results);
+  }
+}
+
+function renderIdioms(results) {
+  return results.map(r =>
+    `<div class="idiom-entry">
+      <span class="idiom-phrase">${esc(r.phrase)}</span>
+      <span class="idiom-tag">idiom</span>
+      ${r.meaning ? `<div class="idiom-meaning">${esc(r.meaning)}</div>` : ''}
+    </div>`
+  ).join('');
+}
+
+async function searchWords(q, el) {
+  const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  if (data.results.length === 0) {
+    el.innerHTML = `<div class="empty">No matches for "${esc(q)}"</div>`;
+  } else {
+    el.innerHTML = data.results.map(r =>
+      `<div class="suggestion">
+        <a onclick="document.getElementById('q').value='${r.word}';setMode('word');doSearch()">${esc(r.word)}</a>
+        <span style="color:var(--muted)">[${esc(r.pos)}]</span>
+      </div>`
+    ).join('');
+  }
+}
+
+// ── Reader Example Harvest (design/64) ──────────────────────────────────────
+
+function getAnonToken() {
+  let t = localStorage.getItem('ml_anon');
+  if (!t) { t = crypto.randomUUID(); localStorage.setItem('ml_anon', t); }
+  return t;
+}
+
+async function loadExamples(listEl) {
+  const lemma = listEl.dataset.lemma;
+  try {
+    const res = await fetch(`/api/examples?lemma=${encodeURIComponent(lemma)}&limit=5`);
+    const data = await res.json();
+    if (!data.examples || data.examples.length === 0) {
+      listEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">No reader examples yet. Be the first!</span>';
+      return;
+    }
+    listEl.innerHTML = data.examples.map(ex => `
+      <div class="user-ex" data-id="${ex.id}">
+        ${esc(ex.sentence)}
+        <div class="ex-source">
+          ${ex.source_label ? '📖 ' + esc(ex.source_label) + ' &middot;' : ''}
+          <button class="vote-btn" onclick="voteExample(${ex.id}, 1, this)">👍 ${ex.score || 0}</button>
+          <button class="vote-btn" onclick="flagExample(${ex.id}, this)" style="margin-left:.3rem">🚩</button>
+        </div>
+      </div>`).join('');
+  } catch {
+    listEl.innerHTML = '';
+  }
+}
+
+function toggleContribute(toggleEl, lemma) {
+  const form = toggleEl.nextElementSibling;
+  const open = form.style.display === 'block';
+  form.style.display = open ? 'none' : 'block';
+  toggleEl.textContent = open ? '+ Add example sentence' : '− Cancel';
+}
+
+async function submitExample(btn, lemma) {
+  const form = btn.closest('.contribute-form');
+  const sentence = form.querySelector('textarea').value.trim();
+  const sourceLabel = form.querySelector('.cf-source').value.trim();
+
+  if (!sentence) { alert('Please enter a sentence.'); return; }
+  if (sentence.length < 10 || sentence.length > 400) {
+    alert('Sentence must be 10–400 characters.'); return;
+  }
+  if (!sentence.toLowerCase().includes(lemma)) {
+    alert(`Sentence must contain the word "${lemma}".`); return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  try {
+    const res = await fetch('/api/examples/contribute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lemma, surface: lemma, sentence,
+        source_type: sourceLabel ? 'manual' : 'manual',
+        source_label: sourceLabel || null,
+        trigger: 'manual',
+        anon_token: getAnonToken(),
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      form.innerHTML = '<div style="color:#5a7c65;font-size:.85rem;padding:.3rem 0">✦ Thank you! Your example has been added.</div>';
+      // Refresh the list
+      const entry = form.closest('.entry');
+      const listEl = entry.querySelector('.ux-list');
+      if (listEl) loadExamples(listEl);
+    } else {
+      alert(data.error || 'Submission failed.');
+      btn.disabled = false; btn.textContent = 'Submit';
+    }
+  } catch {
+    alert('Network error. Please try again.');
+    btn.disabled = false; btn.textContent = 'Submit';
+  }
+}
+
+async function voteExample(id, value, btn) {
+  const scoreEl = btn;
+  await fetch(`/api/examples/${id}/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value })
+  });
+  const current = parseInt(scoreEl.textContent.replace(/\D/g, '')) || 0;
+  scoreEl.textContent = `👍 ${current + 1}`;
+  scoreEl.disabled = true;
+}
+
+async function flagExample(id, btn) {
+  if (!confirm('Flag this example as inappropriate?')) return;
+  await fetch(`/api/examples/${id}/flag`, { method: 'POST' });
+  btn.textContent = '🚩 Flagged';
+  btn.disabled = true;
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Popup dictionary on text selection ---
+let popupEl = null;
+let popupTimeout = null;
+
+function removePopup() {
+  if (popupEl) { popupEl.remove(); popupEl = null; }
+}
+
+function getSelectedWord() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) return null;
+  const text = sel.toString().trim();
+  // Single word only (letters, hyphens, apostrophes)
+  if (!text || !/^[a-zA-ZÀ-ÿ'\-]+$/.test(text)) return null;
+  if (text.length < 2 || text.length > 40) return null;
+  return text;
+}
+
+function positionPopup(popup) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const rect = sel.getRangeAt(0).getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+
+  let left = rect.left + rect.width / 2 - popup.offsetWidth / 2;
+  let top = rect.bottom + 8;
+
+  // Flip above if no room below
+  if (top + popup.offsetHeight > vh - 10) top = rect.top - popup.offsetHeight - 8;
+  // Clamp horizontally
+  if (left < 8) left = 8;
+  if (left + popup.offsetWidth > vw - 8) left = vw - popup.offsetWidth - 8;
+
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+}
+
+async function showPopup(word) {
+  removePopup();
+  const popup = document.createElement('div');
+  popup.className = 'popup-dict';
+  popup.innerHTML = `<span class="popup-loading">Looking up "${esc(word)}"...</span>`;
+  document.body.appendChild(popup);
+  popupEl = popup;
+  positionPopup(popup);
+
+  try {
+    // Try word lookup first
+    const res = await fetch(`/api/lookup?word=${encodeURIComponent(word)}`);
+    const data = await res.json();
+
+    if (data.results && data.results.length > 0) {
+      let html = '';
+      // Show first POS entry (compact)
+      const entry = data.results[0];
+      html += `<span class="popup-word">${esc(entry.word)}</span>`;
+      if (entry.pos) html += `<span class="popup-pos">${esc(entry.pos)}</span>`;
+      if (entry.ipa) html += `<span class="popup-ipa">${esc(entry.ipa)}</span>`;
+      html += '<div class="popup-gloss">';
+      const maxSenses = 3;
+      for (const s of entry.senses.slice(0, maxSenses)) {
+        html += `<div><span class="popup-gloss-num">${s.num}.</span>${esc(s.gloss)}</div>`;
+      }
+      if (entry.senses.length > maxSenses) {
+        html += `<div style="color:var(--muted);font-size:0.8rem">+${entry.senses.length - maxSenses} more</div>`;
+      }
+      html += '</div>';
+      if (data.results.length > 1) {
+        html += `<div style="color:var(--muted);font-size:0.8rem;margin-top:0.3rem">+${data.results.length - 1} other POS</div>`;
+      }
+      html += `<div class="popup-more"><a onclick="document.getElementById('q').value='${esc(entry.word)}';doSearch();removePopup()">Full entry →</a></div>`;
+      popup.innerHTML = html;
+    } else {
+      popup.innerHTML = `<span class="popup-notfound">No entry for "${esc(word)}"</span>`;
+    }
+    positionPopup(popup);
+  } catch (err) {
+    popup.innerHTML = `<span class="popup-notfound">Error looking up "${esc(word)}"</span>`;
+  }
+}
+
+// Desktop: mouseup after selection
+document.addEventListener('mouseup', (e) => {
+  // Don't trigger on popup itself or search box
+  if (e.target.closest('.popup-dict') || e.target.closest('.search-box')) return;
+  clearTimeout(popupTimeout);
+  popupTimeout = setTimeout(() => {
+    const word = getSelectedWord();
+    if (word) showPopup(word);
+  }, 200);
+});
+
+// Mobile: selectionchange
+let touchSelTimeout = null;
+document.addEventListener('selectionchange', () => {
+  if (!('ontouchstart' in window)) return; // desktop uses mouseup
+  clearTimeout(touchSelTimeout);
+  touchSelTimeout = setTimeout(() => {
+    const word = getSelectedWord();
+    if (word) showPopup(word);
+  }, 400);
+});
+
+// Dismiss popup on click outside
+document.addEventListener('mousedown', (e) => {
+  if (popupEl && !e.target.closest('.popup-dict')) removePopup();
+});
+document.addEventListener('touchstart', (e) => {
+  if (popupEl && !e.target.closest('.popup-dict')) removePopup();
+});
+</script>
+</body>
+</html>

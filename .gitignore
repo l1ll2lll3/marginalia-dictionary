@@ -1,0 +1,13 @@
+# 큰 원본·빌드 산출물 (README의 받는 방법 참고)
+*.jsonl
+*.db
+*.db.gz
+*.db-journal
+shared/data/raw/
+
+# 환경
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
