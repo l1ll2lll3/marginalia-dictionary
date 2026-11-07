@@ -2,3 +2,4 @@ flask==3.1.1
 gunicorn==23.0.0
 wordfreq
 pypdf
+spacy==3.8.16      # 숙어 패턴 토큰화 (build_idioms.py), 탐지

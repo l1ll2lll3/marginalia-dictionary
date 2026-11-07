@@ -8,8 +8,8 @@ build_dict_db.py — kaikki.org Wiktionary JSONL → SQLite 사전 DB 빌드
 파찰음·방언·영국식 기호 감점). 예전의 "US 태그, 없으면 첫 번째"는 object 동사에
 명사 발음을 붙이는 등 틀린 경우가 많았다.
 
-만드는 표: words, senses, idioms, word_links, pronunciations.
-등급(word_levels)은 이 DB 위에 build_levels.py가 따로 얹는다.
+만드는 표: words, senses, word_links, pronunciations.
+등급(word_levels)은 build_levels.py가, 숙어(idioms 등)는 build_idioms.py가 이 DB 위에 따로 얹는다.
 
 Usage:
     python build_dict_db.py              # 빌드 (~5분)
@@ -30,7 +30,6 @@ from extract_pronunciations import _pick_ipa, _variant_target  # noqa: E402
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 KAIKKI = Path(__file__).resolve().parent.parent / "data" / "raw" / "kaikki-en.jsonl"
-IDIOMS = Path(__file__).resolve().parent.parent / "data" / "raw" / "english_idioms.json"
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "build" / "dict.db"
 
 ARCHAIC_NORM = {
@@ -55,10 +54,14 @@ def build():
     c.executescript("""
         DROP TABLE IF EXISTS words;
         DROP TABLE IF EXISTS senses;
-        DROP TABLE IF EXISTS idioms;
         DROP TABLE IF EXISTS word_links;
         DROP TABLE IF EXISTS pronunciations;
         DROP TABLE IF EXISTS word_levels;   -- 옛 데이터 기준이라 남겨두면 안 된다. build_levels.py로 다시 만든다
+        DROP TABLE IF EXISTS idioms;        -- 숙어 표도 마찬가지. build_idioms.py로 다시 만든다
+        DROP TABLE IF EXISTS idiom_senses;
+        DROP TABLE IF EXISTS idiom_examples;
+        DROP TABLE IF EXISTS idiom_forms;
+        DROP TABLE IF EXISTS idiom_patterns;
 
         CREATE TABLE words (
             id INTEGER PRIMARY KEY,
@@ -88,17 +91,9 @@ def build():
             FOREIGN KEY (word_id) REFERENCES words(id)
         );
 
-        CREATE TABLE idioms (
-            id INTEGER PRIMARY KEY,
-            phrase TEXT NOT NULL,
-            phrase_normalized TEXT NOT NULL,
-            meaning TEXT
-        );
-
         CREATE INDEX idx_words_normalized ON words(word_normalized);
         CREATE INDEX idx_words_word ON words(word);
         CREATE INDEX idx_senses_word_id ON senses(word_id);
-        CREATE INDEX idx_idioms_normalized ON idioms(phrase_normalized);
         CREATE INDEX idx_links_word ON word_links(word_id);
     """)
 
@@ -191,22 +186,6 @@ def build():
     build_pronunciations(c)
     conn.commit()
 
-    # --- Idioms ---
-    print(f"Loading {IDIOMS.name}...")
-    with open(IDIOMS, "r", encoding="utf-8") as f:
-        idioms = json.load(f)
-
-    batch_idioms = []
-    for i, entry in enumerate(idioms):
-        phrase = entry.get("word", "")
-        senses = entry.get("senses", [])
-        meaning = senses[0] if senses else ""
-        batch_idioms.append((i + 1, phrase, normalize(phrase), meaning))
-
-    c.executemany("INSERT INTO idioms VALUES (?,?,?,?)", batch_idioms)
-    conn.commit()
-    print(f"  Idioms: {len(batch_idioms):,}")
-
     conn.close()
 
     elapsed = time.time() - t0
@@ -276,9 +255,7 @@ def stats():
     print(f"Words: {c.fetchone()[0]:,}")
     c.execute("SELECT COUNT(*) FROM senses")
     print(f"Senses: {c.fetchone()[0]:,}")
-    c.execute("SELECT COUNT(*) FROM idioms")
-    print(f"Idioms: {c.fetchone()[0]:,}")
-    for table in ("word_links", "pronunciations", "word_levels"):
+    for table in ("word_links", "pronunciations", "word_levels", "idioms", "idiom_patterns"):
         try:
             n = c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             print(f"{table}: {n:,}")

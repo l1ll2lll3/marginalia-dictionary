@@ -200,6 +200,12 @@ def idiom():
     c.execute("SELECT phrase, meaning FROM idioms WHERE phrase_normalized = ?", (norm,))
     rows = c.fetchall()
 
+    # 활용형·이형 (took into account → take into account). idiom_forms는 build_idioms.py가 만든다
+    if not rows and has_table(conn, "idiom_forms"):
+        c.execute("""SELECT DISTINCT i.phrase, i.meaning FROM idiom_forms f
+                     JOIN idioms i ON i.id = f.idiom_id WHERE f.form_normalized = ?""", (norm,))
+        rows = c.fetchall()
+
     # Article-stripping fallback
     if not rows:
         stripped = re.sub(r"^(a|an|the)\s+", "", norm)
