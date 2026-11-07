@@ -2,12 +2,13 @@
 
 ## 1. en-en: `en-en/data/build/dict.db`
 
-Marginalia Dictionary(https://marginalia-dict.fly.dev/)가 쓰는 SQLite DB다. 두 단계로 만든다.
+Marginalia Dictionary(https://marginalia-dict.fly.dev/)가 쓰는 SQLite DB다. 아래 순서로 만든다.
 
 ```bash
-.venv/bin/python en-en/scripts/build_dict_db.py        # words, senses, idioms, word_links, pronunciations (~45초)
+.venv/bin/python en-en/scripts/build_dict_db.py        # words, senses, word_links, pronunciations (~45초)
 .venv/bin/python en-en/scripts/parse_kr_curriculum.py  # 교육과정 PDF → CSV (CSV는 git에 있으니 보통 생략)
 .venv/bin/python en-en/scripts/build_levels.py         # word_levels (~10초)
+.venv/bin/python en-en/scripts/build_idioms.py         # idioms, idiom_senses, idiom_examples, idiom_forms, idiom_patterns (~25초)
 ```
 
 - 2026-10-17 빌드 기준이다 (`kaikki-en.jsonl` 2026-09 덤프). 크기 430MB.
@@ -75,18 +76,68 @@ CREATE INDEX idx_links_word ON word_links(word_id);
 
 등급 상속(`build_levels.py`)과 철자 변형의 발음 채우기(`pronunciations.variant_of`)에 쓴다. **첫 뜻만** 본다. 첫 뜻이 고유한 의미인 항목(found = 설립하다)이 다른 뜻 때문에 원형을 물려받지 않게 하려는 것이다.
 
-### idioms — 숙어
+### idioms — 숙어 (2026-11-07부터 `build_idioms.py`)
+
+kaikki-en의 여러 단어 원형 항목에서 직접 뽑는다. 무엇을 숙어로 넣는지는 `docs/idiom_detection.md` §4.1에 있다. 예전에는 reading에서 만든 `english_idioms.json`(69,651행, 선정 기준 불명, 첫 뜻만)을 넣었다. 이 파일은 지금 `build_idioms.py --compare`의 비교용으로만 남아 있다.
 
 ```sql
-CREATE TABLE idioms (
+CREATE TABLE idioms (                -- 33,823행. 숙어 하나 = kaikki 원형 항목 하나
     id                INTEGER PRIMARY KEY,
     phrase            TEXT NOT NULL,
     phrase_normalized TEXT NOT NULL,
-    meaning           TEXT
+    meaning           TEXT,          -- 첫 숙어 뜻. 문자 그대로의 뜻("Used other than figuratively")은 건너뛴다
+    pos               TEXT,
+    included_by       TEXT           -- 숙어로 넣은 이유: idiomatic, phrasal, pos:verb, figuratively …
 );
-CREATE INDEX idx_idioms_normalized ON idioms(phrase_normalized);
+CREATE TABLE idiom_senses (          -- 49,544행. 뜻 전부
+    idiom_id  INTEGER NOT NULL REFERENCES idioms(id),
+    sense_idx INTEGER NOT NULL,
+    gloss     TEXT NOT NULL,
+    tags      TEXT,                  -- JSON 배열: ["idiomatic", "transitive"]
+    literal   INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE idiom_examples (        -- 61,092행. 뜻별 예문. "Synonyms:" 같은 줄은 뺀다
+    idiom_id  INTEGER NOT NULL REFERENCES idioms(id),
+    sense_idx INTEGER NOT NULL,
+    text      TEXT NOT NULL,
+    type      TEXT                   -- example | quotation
+);
+CREATE TABLE idiom_forms (           -- 74,210행. 활용형·이형 → 원형 (took into account, pull up one's socks)
+    idiom_id        INTEGER NOT NULL REFERENCES idioms(id),
+    form            TEXT NOT NULL,
+    form_normalized TEXT NOT NULL,
+    kind            TEXT NOT NULL,   -- form (활용형) | alt (이형)
+    tags            TEXT
+);
+CREATE TABLE idiom_patterns (        -- 38,453행. 탐지용. 원형과 이형마다 하나
+    idiom_id INTEGER NOT NULL REFERENCES idioms(id),
+    source   TEXT NOT NULL,          -- 패턴을 만든 표제
+    pattern  TEXT NOT NULL,          -- JSON 배열. 아래 참고
+    anchor   TEXT NOT NULL,          -- 가장 드문 고정 단어 (후보 찾기 열쇠)
+    n_fixed  INTEGER NOT NULL        -- 고정 단어 수
+);
 ```
-69,651행. 원본은 `data/raw/english_idioms.json`(wiktextract 추출)이다.
+
+`pattern`의 원소 (`docs/idiom_detection.md` §4.2):
+
+| t | 뜻 | 예 |
+|---|---|---|
+| `HEAD` | 활용하는 동사. `lemma`, `forms`(활용형) | take → took, taken |
+| `LIT` | 고정 단어 `w` | into, account |
+| `POSS` | one's / someone's | make up **his** mind |
+| `NP` | someone / something | |
+| `REFL` | oneself | |
+| `OBJ` | 동사 바로 뒤 목적어 자리 (`opt`) | take **the cost** into account |
+
+```
+take into account   → take [OBJ?] into account
+make up one's mind  → make up [POSS] mind
+keep an eye on      → keep an eye on
+```
+
+확인: `.venv/bin/python en-en/scripts/build_idioms.py --check "take into account" "look up"`
+
+`/api/idiom`은 `idioms`에서 못 찾으면 `idiom_forms`에서 찾는다 (took into account → take into account).
 
 ### user_examples — 사용자 예문 (운영 DB에만 있음)
 

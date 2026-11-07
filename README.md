@@ -39,17 +39,18 @@ marginalia-dictionary/
 ├── docs/
 │   ├── schema.md           ← DB 스키마 (현재 + 추가 예정)
 │   ├── grading_sources.md  ← 어휘 등급 목록 조사와 결정
-│   └── idiom_detection.md  ← 불연속 숙어 탐지 설계 (구현 전)
+│   └── idiom_detection.md  ← 불연속 숙어 탐지 설계 (숙어 목록·패턴 빌드까지 구현)
 ├── en-en/
 │   ├── scripts/
 │   │   ├── build_dict_db.py          kaikki JSONL → dict.db
 │   │   ├── build_levels.py           dict.db + word_levels (CEFR, 교육과정)
+│   │   ├── build_idioms.py           dict.db + 숙어 표 (kaikki에서 직접, 탐지 패턴 포함)
 │   │   ├── parse_kr_curriculum.py    교육과정 PDF → CSV
 │   │   ├── dict.py                   CLI 조회
 │   │   ├── extract_pronunciations.py 품사별 미국식 발음 선택 (개선된 로직)
 │   │   └── cefr_grading.py           CEFR-J + Octanove 등급 판정
 │   ├── app/                          Fly.io 웹앱 (server.py, static/index.html, static/test.html)
-│   ├── data/raw/                     kaikki-en.jsonl (3.1GB), english_idioms.json
+│   ├── data/raw/                     kaikki-en.jsonl (3.1GB), english_idioms.json (옛 숙어 목록, 비교용)
 │   ├── data/cefr/                    CEFR-J 1.5, Octanove 1.0 CSV + 라이선스 메모
 │   ├── data/kr_curriculum/           교육과정 기본 어휘 CSV
 │   └── data/build/                   dict.db(.gz), pronunciations_en.json
@@ -89,11 +90,12 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python fetch_data.py                       # 원본 받기 (3.3GB, 끊기면 이어받음)
 .venv/bin/python en-en/scripts/build_dict_db.py      # dict.db (~45초)
 .venv/bin/python en-en/scripts/build_levels.py       # 등급 (~10초)
+.venv/bin/python en-en/scripts/build_idioms.py       # 숙어 (~25초)
 ```
 
 ### 다시 빌드할 때
 
-발음 선택 로직이나 원본을 바꿨으면 `build_dict_db.py` → `build_levels.py` 순서로 둘 다 다시 돌린다 (`build_dict_db.py`가 표를 지우고 새로 만들기 때문에 등급도 사라진다).
+발음 선택 로직이나 원본을 바꿨으면 `build_dict_db.py` → `build_levels.py` → `build_idioms.py` 순서로 다시 돌린다 (`build_dict_db.py`가 표를 지우고 새로 만들기 때문에 등급과 숙어도 사라진다). 숙어만 바꿨으면 `build_idioms.py`만 돌리면 된다.
 
 배포는 `en-en/README.md`를 볼 것 — **배포 전에 운영 DB의 user_examples 백업 필수.**
 
@@ -129,7 +131,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
    - ko·zh가 표제어인 쪽(ko-en, zh-en, ko-zh, zh-ko)은 KRDICT와 CC-CEDICT로 만든다.
    - 다 되면 JSON을 리포에서 뺀다. reading 쪽에서 이 JSON을 쓰는 `api_server.py`(`/api/dictionary/lookup`)와 `add_vocab_translations.py`는 reading 세션에서 새 표로 바꾼다.
 5. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
-6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). reading의 `extract_english_idioms_v2.py`를 바탕으로, 숙어 목록을 kaikki에서 다시 만들고 kaikki 예문으로 평가한다.
+6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). 숙어 목록·패턴 빌드(`build_idioms.py`)는 했고, 다음은 평가(`eval_idioms.py`, reading의 `extract_english_idioms_v2.py`로 기준선)와 탐지기(`idiom_detect.py`)다.
 
 ## 라이선스
 

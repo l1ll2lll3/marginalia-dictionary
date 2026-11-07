@@ -13,7 +13,7 @@ Wiktionary 기반 영어 사전 웹앱. 1.4M 단어 + 70K 숙어, SQLite, Fly.io
 | 소스 | 항목 수 | 라이선스 |
 |------|---------|----------|
 | [kaikki.org](https://kaikki.org/dictionary/English/) Wiktionary JSONL | 1,403,717 단어 | CC BY-SA 3.0 |
-| wiktextract 영어 숙어 (`english_idioms.json`) | 69,651 숙어 | CC BY-SA 3.0 |
+| 숙어 (같은 kaikki에서 `build_idioms.py`가 뽑음) | 33,823 숙어 + 활용형·이형 74,210 | CC BY-SA 3.0 |
 
 - `kaikki.org-dictionary-English.jsonl` (2.5GB) — Wiktionary 전체 영어 사전 덤프
 - 각 항목: word, pos, IPA, etymology, senses (gloss + example)
@@ -30,7 +30,7 @@ python build_dict_db.py --stats  # 통계 확인
 ```sql
 words (id, word, word_normalized, pos, ipa, etymology)
 senses (id, word_id, sense_num, gloss, example)
-idioms (id, phrase, phrase_normalized, meaning)
+idioms (id, phrase, phrase_normalized, meaning, pos, included_by)   -- build_idioms.py. 나머지 숙어 표는 docs/schema.md
 ```
 
 - `word_normalized`: 고어 정규화 (ae→ae, oe→oe 등) — `mediaevalism` 검색 시 `mediævalism`도 매칭

@@ -1,6 +1,8 @@
 # 불연속 숙어 탐지 설계 (2026-11-07)
 
-문장 하나를 받아서 그 안에 든 숙어를 찾는 기능의 설계다. 숙어 단어 사이에 다른 말이 끼어 있어도 찾는다 (take **the cost** into account, look **it** up). 아직 구현하지 않았다.
+문장 하나를 받아서 그 안에 든 숙어를 찾는 기능의 설계다. 숙어 단어 사이에 다른 말이 끼어 있어도 찾는다 (take **the cost** into account, look **it** up).
+
+진행: §9의 1단계(숙어 목록·패턴 빌드, `en-en/scripts/build_idioms.py`)까지 했다. 탐지기는 아직 없다.
 
 ---
 
@@ -125,13 +127,44 @@ v2를 `en_core_web_sm`으로 돌린 결과 (2026-11-07):
 
 ### 4.1 숙어 목록을 kaikki에서 다시 만든다
 
-`english_idioms.json` 대신 `kaikki-en.jsonl`에서 기준을 정해 직접 뽑는다. 기준은 코드와 이 문서에 남긴다.
+`english_idioms.json` 대신 `kaikki-en.jsonl`에서 기준을 정해 직접 뽑는다 (`build_idioms.py`, 2026-11-07 구현).
 
-- 후보: 여러 단어 표제어 중 원형 항목 (`form-of`/`alt-of`만 있는 항목은 원형에 합친다)
-- 포함 조건 (하나라도 맞으면): ① 뜻에 `idiomatic` 태그가 있다 ② 구동사 범주에 있다 ③ 품사가 `phrase`, `prep_phrase`, `proverb`다
+- 후보: 여러 단어 표제어 중 원형 항목. 활용형·이형 항목(`form_of`/`alt_of`만 있는 항목)은 원형에 붙인다. 연결이 이어지는 경우도 끝까지 따라간다 (pushed up the daisies → push up the daisies(이형) → push up daisies).
+- 포함 조건 (하나라도 맞으면):
+  1. 품사가 명사·고유명사가 아니다 (verb, adj, adv, prep, phrase, prep_phrase, proverb, intj …)
+  2. 뜻에 `idiomatic` 태그가 있다
+  3. 구동사 범주에 있다
+  4. 명사라면 `figuratively` 태그가 있거나, 문자 그대로의 뜻이 따로 있다
 - 뜻은 **전부** 태그와 함께 저장한다. 문자 그대로의 뜻에는 따로 표시한다.
 
-이 기준으로 몇 개가 나오는지, 지금 69,651개 목록과 얼마나 겹치는지는 빌드할 때 센다. 차이가 크면 기준을 다시 정한다.
+**처음 기준은 너무 좁았다.** 처음에는 ② `idiomatic` 태그, ③ 구동사 범주, 품사 `phrase`·`prep_phrase`·`proverb`만 넣었다. 그러자 19,383개가 나왔고, 옛 목록 69,392개(정규형 기준) 중 8,466개가 기준 밖으로 빠졌다. 빠진 것 중에 eat one's words(`figuratively` 태그), hold dear(`transitive`만 있음), print money(`informal`만 있음)처럼 분명한 숙어가 많았다. Wiktionary에는 숙어 표시가 `idiomatic` 태그 하나로 통일돼 있지 않다.
+
+그래서 ①을 넣었다. Wiktionary는 여러 단어 표제어를 뜻이 단어 뜻의 합이 아닐 때만 올린다(CFI). 따라서 여러 단어 동사·부사·전치사구는 태그가 없어도 숙어로 볼 수 있다. 실제로 기준 밖 여러 단어 동사 5,791개 중 5,361개가 옛 목록에 있었다. 명사는 11만 개가 대부분 복합명사(safety valve)라서 숙어 표시가 있을 때만 넣는다.
+
+결과 (2026-11-07):
+
+| 항목 | 수 |
+|---|---|
+| 숙어 (`idioms`) | 33,823 |
+| 뜻 (`idiom_senses`) | 49,544 (문자 그대로 2,845) |
+| 예문 (`idiom_examples`) | 61,092 |
+| 활용형·이형 (`idiom_forms`) | 74,210 |
+| 패턴 (`idiom_patterns`) | 38,453 |
+
+옛 `english_idioms.json`과 비교 (`build_idioms.py --compare`):
+
+| 옛 목록 69,392개의 행방 | 수 | 예 |
+|---|---|---|
+| 원형으로 들어감 | 24,000 | in a nutshell, see double |
+| 활용형·이형으로 붙음 | 41,011 | took lying down, struck one's colors |
+| 숙어 기준에서 빠짐 | 1,604 | king of the north, glory hole, snake in the grass |
+| 원형이 기준에서 빠진 활용형 | 711 | tricks of the light, officers of the court |
+| 원형이 kaikki에 없는 활용형 | 1,525 | binge watches, drip feed (원형이 하이픈·붙여 쓴 한 단어) |
+| kaikki에 없음 | 653 | ass-backwards, self-contained (한 단어) |
+
+옛 목록의 93.7%가 원형이나 활용형으로 들어왔다. 새로 들어온 원형은 8,871개다 (no man is an island, for sure, back to nature).
+
+빠진 것 중에 **태그 없는 명사 숙어**(snake in the grass, trick of the light)가 있다. 또 make use of는 Wiktionary에 표제어가 없어서 들어오지 않는다. v2는 이걸 손으로 넣었었다. §8 참고.
 
 ### 4.2 숙어를 패턴으로 바꾼다
 
@@ -139,13 +172,31 @@ v2를 `en_core_web_sm`으로 돌린 결과 (2026-11-07):
 
 | 종류 | 무엇과 맞추나 | 예 |
 |---|---|---|
-| `HEAD` | 표제어 품사가 verb일 때 첫 단어. 품사 VERB/AUX인 토큰을 원형(lemma)으로 맞춘다 | take → took, taken |
+| `HEAD` | 표제어 품사가 verb일 때 활용하는 단어. 활용형과 원형을 토큰별로 비교해 다른 자리로 정하고, 활용형이 없으면 첫 단어로 본다. 탐지 때는 품사 VERB/AUX인 토큰을 원형(lemma)이나 활용형으로 맞춘다 | take → took, taken |
 | `LIT` | 고정 단어. 소문자로 정확히 맞춘다 | into, account |
 | `POSS` | `one's`, `someone's`, `somebody's` → 소유격 대명사(my, his …)나 's 붙은 명사구 | make up **his** mind, **the boy's** |
 | `NP` | `someone`, `somebody`, `something` → 명사구 하나 (머리 토큰의 하위 트리 전체) | all over **the poor man** like a rash |
 | `REFL` | `oneself` → myself, himself, themselves … | |
 
-여기에 **암묵적 목적어 자리**를 하나 더 둔다. 표제어에 자리표시어가 없더라도 타동사로 쓰이는 숙어(뜻에 `transitive` 태그가 있음)는 `HEAD`와 다음 `LIT` 사이에 목적어가 낄 수 있다. take [him] to task, take [the cost] into account, look [it] up이 그런 경우다.
+여기에 **암묵적 목적어 자리**(`OBJ`)를 하나 더 둔다. 동사 숙어는 `HEAD`와 다음 `LIT` 사이에 목적어가 낄 수 있다. take [him] to task, take [the cost] into account, look [it] up이 그런 경우다.
+
+처음 계획은 `transitive` 태그가 있는 숙어에만 이 자리를 두는 것이었다. 그런데 이 태그가 빠진 항목이 많다. take to task에도 `idiomatic`만 있다. 그래서 태그 대신 아래 규칙으로 정한다. 실제로 목적어인지는 탐지기가 구문 분석으로 확인한다(§4.3).
+
+- 동사 다음 단어의 Wiktionary 품사(`words` 표)에 adv·prep·adj·particle이 있고, article·det·pron은 없을 때만 둔다. 그래서 up, into, dear, for 뒤에는 두고, an, the, it, use, care, place 뒤에는 두지 않는다. keep an eye on, make use of는 숙어 자신이 이미 목적어를 갖고 있기 때문이다.
+- 숙어에 이미 자리표시어(`POSS`·`NP`·`REFL`)가 있으면 두지 않는다 (make up one's mind).
+- 전치사로만 쓰이는 말(of, with, to …)로 끝나면 두지 않는다. 목적어가 맨 뒤에 오기 때문이다 (look up to him, get rid of it). 이 규칙 때문에 put [her success] down to luck처럼 목적어가 두 군데 오는 3단어 구동사는 놓친다.
+
+결과 예:
+
+```
+take into account   → take [OBJ?] into account
+look up             → look [OBJ?] up
+hold dear           → hold [OBJ?] dear
+make up one's mind  → make up [POSS] mind
+keep an eye on      → keep an eye on
+pull up one's socks → pull up [POSS] socks   (이형. 원형 pull one's socks up과 같은 숙어로 묶인다)
+put up with         → put up with
+```
 
 ### 4.3 맞추는 방법
 
@@ -165,6 +216,8 @@ v2는 끼는 말을 "토큰 0~2개"로 제한했다. 이걸 **"끼는 말이 문
 손으로 고른 목록은 없앤다. 다만 아래 몇 가지는 규칙으로 정해야 한다. 데이터가 아니라 문법 규칙이므로 코드 상수로 둔다.
 
 - 자리표시어 단어 (one's, someone, something, oneself …): §3 표의 값 그대로
+- 전치사로만 쓰이는 말 (`PREP_ONLY`: of, with, to, for, at, from, into …)
+- 목적어 자리를 정하는 품사 묶음 (`OBJ_BEFORE_POS`, `NOMINAL_POS`)
 - 끼는 말로 받아 주는 dep 종류: dobj, dative, amod, advmod
 - 재귀대명사 목록
 
@@ -172,47 +225,23 @@ v2는 끼는 말을 "토큰 0~2개"로 제한했다. 이걸 **"끼는 말이 문
 
 ## 5. 저장 구조
 
-`docs/schema.md`에 추가할 내용이다. 지금 `idioms` 표는 이름 검색에 쓰고 있으니 그대로 두고 채우는 방법만 바꾼다.
+구현했다. 표 정의는 `docs/schema.md`의 idioms 절에 있다. 처음 설계에서 더한 것:
 
-```sql
--- 기존 표. kaikki에서 다시 채운다. meaning은 첫 숙어 뜻(문자 그대로의 뜻 제외)
-CREATE TABLE idioms (
-    id                INTEGER PRIMARY KEY,
-    phrase            TEXT NOT NULL,
-    phrase_normalized TEXT NOT NULL,
-    meaning           TEXT,
-    pos               TEXT              -- 새로 추가
-);
-
--- 뜻 전부
-CREATE TABLE idiom_senses (
-    idiom_id  INTEGER NOT NULL,
-    sense_idx INTEGER NOT NULL,
-    gloss     TEXT NOT NULL,
-    tags      TEXT,                      -- JSON 배열: ["idiomatic", "transitive"]
-    literal   INTEGER NOT NULL DEFAULT 0 -- "Used other than figuratively" 뜻
-);
-
--- 탐지용 패턴
-CREATE TABLE idiom_patterns (
-    idiom_id   INTEGER NOT NULL,
-    pattern    TEXT NOT NULL,            -- JSON: [{"t":"HEAD","lemma":"take"},{"t":"OBJ?"},{"t":"LIT","w":"into"},…]
-    anchor     TEXT NOT NULL,            -- 가장 드문 LIT 단어
-    n_fixed    INTEGER NOT NULL          -- 고정 단어 수 (겹침 정리용)
-);
-CREATE INDEX idx_idiom_patterns_anchor ON idiom_patterns(anchor);
-```
+- `idioms.included_by`: 숙어로 넣은 이유. 기준을 고칠 때 무엇이 들고 나는지 보려고 둔다
+- `idiom_examples`: 뜻별 예문. 평가 세트(§6)와 화면 표시에 쓴다
+- `idiom_forms`: 활용형·이형 → 원형. `/api/idiom`이 활용형으로도 찾게 한다 (옛 목록은 활용형이 따로 행이었다)
+- `idiom_patterns.source`: 이형은 어순이 달라서(pull up one's socks) 패턴을 따로 만든다
 
 ---
 
 ## 6. 평가
 
-손으로 정답을 만들지 않는다. kaikki 예문이 정답이다.
+손으로 정답을 만들지 않는다. kaikki 예문이 정답이다. `idiom_examples` 표(61,092개, "Synonyms:"류 줄은 빌드 때 뺐다)를 쓴다. §3의 39,654 / 10,453은 옛 목록 기준으로 센 값이라 `eval_idioms.py`에서 새 목록으로 다시 센다.
 
 | 세트 | 출처 | 재는 것 |
 |---|---|---|
-| 연속 | 숙어 예문 중 표제어·활용형이 그대로 든 것 (39,654) | 재현율. 연속 매칭이 깨지지 않았는가 |
-| 불연속 | 숙어 예문 중 그대로 들지 않은 것 (10,453). "Synonyms:"류 줄은 뺀다 | 재현율. 이번 작업의 핵심 지표 |
+| 연속 | 숙어 예문 중 표제어·활용형이 그대로 든 것 | 재현율. 연속 매칭이 깨지지 않았는가 |
+| 불연속 | 숙어 예문 중 그대로 들지 않은 것 | 재현율. 이번 작업의 핵심 지표 |
 | 문자 그대로 | 문자 그대로의 뜻에 붙은 예문 | 숙어 뜻으로 잘못 잡는 비율 |
 | 회귀 사례 | §2.2 표의 11문장 | 아래 기대값 |
 | 실제 책 | 퍼블릭 도메인 책(달과 6펜스 등)에서 뽑은 탐지 결과 200개 | 정밀도. 사용자가 맞다/틀리다만 검토한다 |
@@ -276,12 +305,14 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
 4. **관사·수의 변이**: keep **their eyes** on, take **a** hold of처럼 고정 단어 자체가 바뀌는 경우다. 1차에서는 다루지 않고, 평가에서 못 찾은 원인으로 얼마나 나오는지 보고 정한다.
 5. **어순이 바뀌는 경우**: 수동태(the cost was taken into account)는 `HEAD`와 `LIT`가 붙어 있어서 그대로 잡힌다. 관계절(the strings he pulled)이나 도치는 1차 범위 밖이다.
 6. **reading 쪽 교체**: `extract_english_idioms_v2.py`를 이 탐지기로 바꾸는 건 reading 세션에서 한다. `book_package.json`의 숙어 주석 형식은 reading에 맞춘다.
+7. **태그 없는 명사 숙어**: snake in the grass, trick of the light, ghost in the machine은 명사이고 숙어 표시가 없어서 빠졌다(§4.1). 명사를 기능어(of, in, the …)가 든 것까지 넓히면 들어오지만 republic of the congo 같은 이름도 같이 들어온다. 평가 뒤에 정한다.
+8. **고정 단어만 있는 짧은 숙어의 오탐**: word up(감탄사)은 패턴이 `word up`뿐이라 "He looked the word up." 안의 word up에도 맞는다. 동사가 아닌 숙어도 품사나 위치를 확인해야 한다. 감탄사는 문장 앞에서만 받는 식이다. 탐지기에서 정한다.
 
 ---
 
 ## 9. 순서
 
-1. `build_idioms.py`: 목록 다시 만들기 + 지금 목록과의 차이 보고 (§4.1)
+1. ~~`build_idioms.py`: 목록 다시 만들기 + 지금 목록과의 차이 보고 (§4.1)~~ — 2026-11-07 완료
 2. `eval_idioms.py`: 평가 세트를 만들고 **v2부터** 잰다. 기준선이 된다
 3. `idiom_detect.py`: §4.2~4.3 구현, 평가하면서 고치기
 4. 모델 비교 (sm / lg / trf), 서버 메모리 측정
