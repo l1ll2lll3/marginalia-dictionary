@@ -5,6 +5,7 @@
 *.db-journal
 *.spacy
 en-en/data/build/idiom_review.tsv
+en-en/data/build/check/
 shared/data/raw/
 
 # 환경

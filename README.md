@@ -46,6 +46,7 @@ marginalia-dictionary/
 │   │   ├── build_levels.py           dict.db + word_levels (CEFR, 교육과정)
 │   │   ├── build_idioms.py           dict.db + 숙어 표 (kaikki에서 직접, 탐지 패턴 포함)
 │   │   ├── eval_idioms.py            숙어 탐지기 평가 (kaikki 예문이 정답)
+│   │   ├── check.py                  회귀·재현율·API·화면을 한 번에 검사
 │   │   ├── parse_kr_curriculum.py    교육과정 PDF → CSV
 │   │   ├── dict.py                   CLI 조회
 │   │   ├── extract_pronunciations.py 품사별 미국식 발음 선택 (개선된 로직)
@@ -98,6 +99,15 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 발음 선택 로직이나 원본을 바꿨으면 `build_dict_db.py` → `build_levels.py` → `build_idioms.py` 순서로 다시 돌린다 (`build_dict_db.py`가 표를 지우고 새로 만들기 때문에 등급과 숙어도 사라진다). 숙어만 바꿨으면 `build_idioms.py`만 돌리면 된다.
 
+고치고 나서 커밋 전에 검사를 돌린다:
+
+```bash
+.venv/bin/python en-en/scripts/check.py               # 전부 (~50초)
+.venv/bin/python en-en/scripts/check.py --no-recall   # 재현율 빼고 (~10초)
+```
+
+DB, 회귀 사례, 재현율, API(실제 서버), 화면(설치된 Chrome으로 눌러 보기)을 본다. 스크린샷은 `en-en/data/build/check/`에 남는다. 그림은 사람이 봐야 한다. 코드가 도는 것과 화면이 괜찮은 건 다른 문제다.
+
 배포는 `en-en/README.md`를 볼 것 — **배포 전에 운영 DB의 user_examples 백업 필수.**
 
 ---
@@ -133,8 +143,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
    - 다 되면 JSON을 리포에서 뺀다. reading 쪽에서 이 JSON을 쓰는 `api_server.py`(`/api/dictionary/lookup`)와 `add_vocab_translations.py`는 reading 세션에서 새 표로 바꾼다.
 5. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
 6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). 탐지기(`en-en/app/idiom_detect.py`)와 API(`POST /api/idioms/detect`)까지 만들었다 (불연속 재현율 80.2%, v2는 47.7%). 사전 검색 후보, 단어 페이지의 숙어 목록, 문장 속 숙어 연결(`/api/lookup?sentence=`)도 만들었다. 정밀도는 약 82%(위대한 개츠비 200개 표본, 구현자 판정). 남은 것: 운영 배포 (사용자가 아직 하지 말라고 했다).
-7. 검사 스크립트 (제안, 2026-11-07. 아직 안 정했다). 회귀 사례, API 시험, 화면 스크린샷을 명령 하나로 돌린다. 지금은 `index.html`과 `/test`를 브라우저로 확인한 적이 없다.
-   - 함께 검토한 자율 개발 루프(헤드리스 세션을 반복해서 돌리는 방식)는 전체 도입을 권하지 않았다. 숙어 표시의 가치처럼 합격 기준을 기계로 재기 어렵고, 혼자 돌면 자기 채점이 되고(어림 85% → 다른 책 77%), 평가용 책이 소모되기 때문이다. 쓴다면 `translations` 표처럼 범위가 분명한 작업 하나에, 바퀴 수를 제한하고 배포·push 권한 없이 쓴다.
+7. 자율 개발 루프(헤드리스 세션을 반복해서 돌리는 방식)는 검토만 했다 (2026-11-07). 전체 도입을 권하지 않았다. 숙어 표시의 가치처럼 합격 기준을 기계로 재기 어렵고, 혼자 돌면 자기 채점이 되고(어림 85% → 다른 책 77%), 평가용 책이 소모되기 때문이다. 쓴다면 `translations` 표처럼 범위가 분명한 작업 하나에, 바퀴 수를 제한하고 배포·push 권한 없이 쓴다.
 
 ## 라이선스
 

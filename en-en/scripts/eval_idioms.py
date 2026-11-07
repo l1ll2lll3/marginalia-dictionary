@@ -299,6 +299,7 @@ def evaluate(detector, docs, examples, idioms, names, misses, extras):
             print(f"\n못 찾은 {kind} 예시")
             for e in rng.sample(missed[kind], min(misses, len(missed[kind]))):
                 print(f"  [{idioms[e['idiom']]['phrase']}] {e['text'][:110]}")
+    return stats
 
 
 def book_sample(nlp, book, sample, out, levels, seed):
