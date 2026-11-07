@@ -191,6 +191,21 @@ def check_api(r, base):
         _, d = get(base, "/api/idiom", phrase=query)
         top = d["results"][0]["phrase"] if d["results"] else None
         r.check(f"숙어 찾기: {query} → {first}", d.get("match") == match and top == first, f"{d.get('match')} {top}")
+    _, d = get(base, "/api/idiom", phrase="take into account")
+    top = d["results"][0]
+    r.check("숙어에 뜻별 예문이 온다", top["level"] == "idiom" and top["pos"] == "verb"
+            and any(s["examples"] for s in top["senses"]), str(top)[:120])
+    _, d = get(base, "/api/idiom", phrase="break the ice")
+    senses = d["results"][0]["senses"]
+    r.check("문자 그대로의 뜻은 맨 뒤", senses[-1]["literal"] and not senses[0]["literal"], str(senses)[:120])
+    _, d = get(base, "/api/idiom", phrase="make up")
+    shown = [x for e in d["results"] for s in e["senses"] for x in s["examples"]]
+    _, d = get(base, "/api/idiom", phrase="break the ice")
+    old = [x["text"] for s in d["results"][0]["senses"] for x in s["examples"] if "ſ" in x["text"]]
+    r.check("ſ가 든 옛 인용문은 뺀다", not old, str(old)[:120])
+    r.check("예문은 뜻마다 2개까지, 300자 이하, 한 줄", shown and
+            all(len(s["examples"]) <= 2 for e in d["results"] for s in e["senses"])
+            and all(len(x["text"]) <= 300 and "\n" not in x["text"] for x in shown), str(shown)[:120])
     _, d = get(base, "/api/idiom", phrase="cup")
     r.check("cup에 up 숙어가 걸리지 않는다", not any(" up" in x["phrase"] for x in d["results"]), str(d["results"])[:120])
 
@@ -265,8 +280,24 @@ def check_screen(r, base):
         def index_pick():
             page.locator(".word-idioms .idiom-phrase", has_text="take into account").first.click()
             page.wait_for_function("!document.querySelector('.word-idioms')", timeout=8000)
-            page.wait_for_selector("#results .idiom-entry", timeout=8000)
+            page.wait_for_selector("#results .idiom-entry .sense-example", timeout=8000)
             assert "take into account" in page.inner_text("#results")
+            page.screenshot(path=SHOTS / "index_idiom.png", full_page=True)
+
+        def index_senses():
+            page.fill("#q", "break the ice")
+            page.press("#q", "Enter")
+            page.get_by_text("literal", exact=True).wait_for(timeout=8000)
+            page.screenshot(path=SHOTS / "index_idiom_senses.png", full_page=True)
+
+        def index_more_senses():
+            page.fill("#q", "make up")
+            page.press("#q", "Enter")
+            page.wait_for_selector(".idiom-more-senses", timeout=8000)
+            assert not page.locator(".idiom-more-senses .sense").first.is_visible()
+            page.locator(".idiom-more-senses summary").first.click()
+            assert page.locator(".idiom-more-senses .sense").first.is_visible()
+            page.screenshot(path=SHOTS / "index_idiom_more.png", full_page=True)
 
         def index_candidates():
             page.fill("#q", "look * up")
@@ -288,7 +319,9 @@ def check_screen(r, base):
         step("/test: 숙어 탐지가 숙어 단어만 강조", test_detect)
         step("/test: 고정 표현 보기", test_phrase_toggle)
         step("/: 단어 페이지의 숙어 목록", index_word)
-        step("/: 숙어를 눌러 찾기", index_pick)
+        step("/: 숙어를 눌러 찾기 → 예문", index_pick)
+        step("/: 숙어의 뜻별 예문과 literal 표시", index_senses)
+        step("/: 숙어의 뒤쪽 뜻 펼치기", index_more_senses)
         step("/: 후보 보여주고 고르기", index_candidates)
         step("/: 더 보기", index_more)
 
@@ -301,11 +334,12 @@ def check_screen(r, base):
             phone.press(query_selector, "Enter")
             phone.wait_for_selector(wait, timeout=8000)
             width = phone.evaluate("document.documentElement.scrollWidth")
-            name = "phone_index.png" if path == "/" else "phone_test.png"
+            name = {"account": "phone_index.png", "make up": "phone_idiom.png"}.get(fill, "phone_test.png")
             phone.screenshot(path=SHOTS / name, full_page=True)
             assert width <= 390, f"가로 넘침 {width}px"
 
         step("휴대폰 폭: / 가로 넘침 없음", lambda: no_overflow("/", "#q", "account", ".word-idioms"))
+        step("휴대폰 폭: 숙어 예문 가로 넘침 없음", lambda: no_overflow("/", "#q", "make up", ".sense-example"))
         step("휴대폰 폭: /test 가로 넘침 없음", lambda: no_overflow("/test", "#idiomText", "She took the cost into account.", "#idiomOut mark"))
         browser.close()
 

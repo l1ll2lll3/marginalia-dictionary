@@ -65,6 +65,8 @@
   .sense-example { display: block; text-indent: 0; padding-left: 1.2rem;
                    color: var(--muted); font-style: italic; font-size: 0.9rem;
                    margin-top: 0.15rem; }
+  .sense-example + .sense-example { margin-top: 0.4rem; }
+  .idiom-more-senses summary { color: var(--muted); cursor: pointer; margin-bottom: 0.5rem; }
   .etymology { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border);
                font-size: 0.85rem; color: var(--muted); }
   .etymology strong { color: var(--text); font-weight: normal; }
@@ -321,10 +323,24 @@ function renderIdioms(results) {
   return results.map(r =>
     `<div class="idiom-entry">
       <span class="idiom-phrase">${esc(r.phrase)}</span>
+      ${r.pos ? `<span class="entry-pos">${esc(r.pos)}</span>` : ''}
       <span class="idiom-tag">${esc(r.level || 'idiom')}</span>
-      ${r.meaning ? `<div class="idiom-meaning">${esc(r.meaning)}</div>` : ''}
+      ${r.senses && r.senses.length ? renderIdiomSenses(r.senses)
+        : r.meaning ? `<div class="idiom-meaning">${esc(r.meaning)}</div>` : ''}
     </div>`
   ).join('');
+}
+
+// 찾은 숙어의 뜻과 예문. 목록과 후보에는 senses가 없어서 뜻 한 줄만 나온다
+function renderIdiomSenses(senses) {
+  const rows = senses.map((s, i) =>
+    `<div class="sense"><span class="sense-num">${i + 1}.</span> ${esc(s.gloss)}` +
+    (s.literal ? ' <span class="idiom-tag">literal</span>' : '') +
+    s.examples.map(x => `<span class="sense-example">${esc(x.text)}</span>`).join('') +
+    '</div>');
+  const more = rows.length > 8
+    ? `<details class="idiom-more-senses"><summary>+${rows.length - 8} more</summary>${rows.slice(8).join('')}</details>` : '';
+  return `<div class="senses">${rows.slice(0, 8).join('')}${more}</div>`;
 }
 
 async function searchWords(q, el) {

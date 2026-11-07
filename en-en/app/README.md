@@ -67,7 +67,7 @@ dict_app/
 | Method | Path | 설명 |
 |--------|------|------|
 | GET | `/api/lookup?word=bourdon` | 단어 조회 (IPA, 뜻, 어원) |
-| GET | `/api/idiom?phrase=piece+of+cake` | 숙어 조회 (관사 제거 fallback) |
+| GET | `/api/idiom?phrase=piece+of+cake` | 숙어 조회 (뜻별 예문 포함, 관사 제거 fallback, 없으면 후보) |
 | POST | `/api/idioms/detect` `{"text": "..."}` | 문장 속 숙어 찾기 (불연속 포함, spaCy) |
 | GET | `/api/lookup?word=took&sentence=...` | 단어 + 이 단어가 든 숙어(`idioms`) + 문장 속 숙어(`in_sentence`) |
 | GET | `/api/search?q=medi*` | 와일드카드 검색 |

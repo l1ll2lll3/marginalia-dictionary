@@ -377,8 +377,6 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
 
 기본은 idiom·phrasal만 돌려준다. 고정 표현까지 보려면 `levels`에 phrase를 넣는다. 서버는 워커 1개 + 스레드 4개로 돌린다 (`start.sh`). spaCy는 잠금으로 한 번에 하나씩 돌린다.
 
-아직 안 한 것: `/api/idiom`이 뜻을 전부 돌려주게 한다.
-
 ---
 
 ## 8. 정하지 않은 것
@@ -411,6 +409,14 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
 - `idiom_words` 표(숙어별 고정 단어)로 단어 단위로 찾는다. 예전의 `LIKE '%up%'`는 cup에도 걸렸다.
 - 입력 단어는 `word_links`로 원형을 찾는다 (took → take). spaCy를 쓰지 않는다.
 - 점수 = 입력 중 숙어에 든 비율 × 숙어 중 입력에 든 비율. 드문 단어일수록 무겁게 센다 (idf). 어순이 같으면 조금 더 준다. 두 단어 이상 넣으면 두 단어는 맞아야 후보다.
+
+찾은 숙어의 항목 (`match: "exact"`): `/api/idiom`은 `pos`, `level`, 뜻별 `senses`(`num`, `gloss`, `literal`, `examples`)를 준다. `meaning`은 대표 뜻 한 줄로 그대로 둔다. 후보(`candidates`)에는 `senses`가 없다.
+
+- 문자 그대로의 뜻(`literal`)은 숙어 뜻 뒤로 보내고 화면에 `literal`로 표시한다. look up at the stars 같은 예문이 숙어 뜻처럼 보이지 않게 하려는 것이다.
+- 예문은 뜻마다 2개까지 고른다 (`pick_examples`). 만든 예문이 먼저이고 그다음 인용문이며, 같으면 짧은 것이 먼저다.
+- 10자 미만(`(title)`, `.`), 300자 초과, 여러 줄(대화·시·출처가 섞임), `ſ`가 든 옛 인용문, `[See title]`은 뺀다. 고르는 건 서버에서 하고 `idiom_examples`는 그대로 둔다. 평가 세트로 쓰기 때문이다.
+- 그래서 예문이 있는 숙어는 20,545개에서 19,578개(전체의 57.8%)로 줄어 보인다. idiom 72.9%, phrasal 60.7%, phrase 47.5%다.
+- 화면은 뜻 8개까지 보여주고 나머지는 펼쳐서 본다 (make up은 18개). 단어 페이지의 숙어 목록과 후보는 뜻 한 줄만 보여주고, 누르면 이 항목이 열린다.
 
 단어 페이지 (`/api/lookup`):
 

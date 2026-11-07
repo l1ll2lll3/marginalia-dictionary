@@ -295,6 +295,38 @@ def idiom_candidates(conn, query, limit=15):
     return sorted(scored.values(), key=lambda r: (-r["score"], len(r["phrase"])))[:limit]
 
 
+EXAMPLES_PER_SENSE = 2
+EXAMPLE_LEN = (10, 300)              # 짧으면 (title), . 같은 잡음이고 길면 숙어가 어디 있는지 안 보인다
+EXAMPLE_RANK = {"example": 0, "quotation": 1}
+
+
+def pick_examples(rows):
+    """뜻 하나의 예문 (text, type) 중 화면에 보여줄 것. 만든 예문 → 인용문, 짧은 것 먼저.
+
+    여러 줄은 대화·시·출처가 섞인 것이고 ſ가 든 옛 인용문은 학습자가 읽기 어려워서 뺀다.
+    """
+    usable = [(text, kind) for text, kind in rows
+              if EXAMPLE_LEN[0] <= len(text) <= EXAMPLE_LEN[1]
+              and "\n" not in text and "ſ" not in text and "see title" not in text.lower()]
+    usable.sort(key=lambda x: (EXAMPLE_RANK.get(x[1], 2), len(x[0])))
+    return [{"text": text, "type": kind} for text, kind in usable[:EXAMPLES_PER_SENSE]]
+
+
+def idiom_entry(conn, row):
+    """숙어 하나의 전체 항목. 문자 그대로의 뜻은 숙어 뜻 뒤로 보낸다."""
+    examples = {}
+    for sense_idx, text, kind in conn.execute(
+            "SELECT sense_idx, text, type FROM idiom_examples WHERE idiom_id = ?", (row["id"],)):
+        examples.setdefault(sense_idx, []).append((text, kind))
+    senses = [{"num": s["sense_idx"], "gloss": s["gloss"], "literal": bool(s["literal"]),
+               "examples": pick_examples(examples.get(s["sense_idx"], []))}
+              for s in conn.execute("""SELECT sense_idx, gloss, literal FROM idiom_senses
+                                       WHERE idiom_id = ? ORDER BY sense_idx""", (row["id"],))]
+    senses.sort(key=lambda s: s["literal"])
+    return {"phrase": row["phrase"], "meaning": row["meaning"], "pos": row["pos"],
+            "level": row["level"], "senses": senses}
+
+
 @app.route("/api/idiom")
 def idiom():
     phrase = request.args.get("phrase", "").strip()
@@ -305,12 +337,12 @@ def idiom():
     c = conn.cursor()
     norm = normalize(phrase)
 
-    c.execute("SELECT phrase, meaning FROM idioms WHERE phrase_normalized = ?", (norm,))
+    c.execute("SELECT * FROM idioms WHERE phrase_normalized = ?", (norm,))
     rows = c.fetchall()
 
     # 활용형·이형 (took into account → take into account). idiom_forms는 build_idioms.py가 만든다
     if not rows and has_table(conn, "idiom_forms"):
-        c.execute("""SELECT DISTINCT i.phrase, i.meaning FROM idiom_forms f
+        c.execute("""SELECT DISTINCT i.* FROM idiom_forms f
                      JOIN idioms i ON i.id = f.idiom_id WHERE f.form_normalized = ?""", (norm,))
         rows = c.fetchall()
 
@@ -318,11 +350,11 @@ def idiom():
     if not rows:
         stripped = re.sub(r"^(a|an|the)\s+", "", norm)
         if stripped != norm:
-            c.execute("SELECT phrase, meaning FROM idioms WHERE phrase_normalized = ?", (stripped,))
+            c.execute("SELECT * FROM idioms WHERE phrase_normalized = ?", (stripped,))
             rows = c.fetchall()
 
     if rows:
-        results = [{"phrase": r["phrase"], "meaning": r["meaning"]} for r in rows]
+        results = [idiom_entry(conn, r) for r in rows]
         match = "exact"
     else:
         # 정확히 맞는 게 없으면 후보를 준다. 사용자가 고른다
