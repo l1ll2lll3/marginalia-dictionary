@@ -165,8 +165,13 @@ def lookup():
             seen_ety.add(ety)
 
     levels = levels_for(conn, norm)
+    out = {"query": word, "results": results, "levels": levels, "suggestions": [],
+           "idioms": idioms_of_word(conn, norm, request.args.get("idiom_limit", 10, type=int))}
+    sentence = request.args.get("sentence", "").strip()
+    if sentence and len(sentence) <= MAX_TEXT:
+        out["in_sentence"] = idioms_in_sentence(conn, norm, sentence)
     conn.close()
-    return jsonify({"query": word, "results": results, "levels": levels, "suggestions": []})
+    return jsonify(out)
 
 
 @app.route("/api/stats")
@@ -190,6 +195,7 @@ def stats():
 
 
 LEVEL_BONUS = {"idiom": 0.06, "phrasal": 0.03, "phrase": 0.0}
+LEVEL_ORDER = {"idiom": 0, "phrasal": 1, "phrase": 2}
 
 
 def lemmas_of(conn, word):
@@ -199,6 +205,43 @@ def lemmas_of(conn, word):
         SELECT l.target FROM words w JOIN word_links l ON l.word_id = w.id
         WHERE w.word_normalized = ? AND l.kind = 'form_of'""", (word,)))
     return forms
+
+
+def idioms_of_word(conn, word, limit=10):
+    """이 단어가 든 숙어. 단어만 찾아도 숙어를 접하게 한다 (took → take의 숙어).
+
+    idiom → phrasal → phrase 순서이고, 같으면 Wiktionary 예문이 많은 쪽이 먼저다.
+    예문 수는 흔한 숙어일수록 많다. take는 숙어가 천 개가 넘어서 limit개만 준다.
+    """
+    if not has_table(conn, "idiom_words"):
+        return {"total": 0, "items": []}
+    forms = tuple(lemmas_of(conn, word))
+    marks = ",".join("?" * len(forms))
+    rows = conn.execute(f"""
+        SELECT i.phrase, i.meaning, i.level,
+               (SELECT COUNT(*) FROM idiom_examples e WHERE e.idiom_id = i.id) AS examples
+        FROM idioms i
+        WHERE i.id IN (SELECT idiom_id FROM idiom_words WHERE word IN ({marks}))""", forms).fetchall()
+    best = {}
+    for r in sorted(rows, key=lambda r: (LEVEL_ORDER[r["level"]], -r["examples"], len(r["phrase"]))):
+        best.setdefault(r["phrase"], {"phrase": r["phrase"], "meaning": r["meaning"], "level": r["level"]})
+    items = list(best.values())
+    return {"total": len(items), "items": items[:max(1, min(limit, 200))]}
+
+
+def idioms_in_sentence(conn, word, sentence):
+    """문장에서 찾은 숙어 중 이 단어가 든 것. 책에서 단어를 눌렀을 때 쓴다.
+
+    the cost처럼 숙어 사이에 낀 말을 누르면 나오지 않는다. 탐지기가 없으면 None.
+    """
+    results = detect_text(sentence)
+    if results is None or not has_table(conn, "idiom_words"):
+        return None
+    forms = tuple(lemmas_of(conn, word))
+    marks = ",".join("?" * len(forms))
+    return [r for r in results if conn.execute(
+        f"SELECT 1 FROM idiom_words WHERE idiom_id = ? AND word IN ({marks}) LIMIT 1",
+        (r["idiom_id"], *forms)).fetchone()]
 
 
 def idiom_candidates(conn, query, limit=15):
@@ -290,6 +333,7 @@ def idiom():
 
 
 DEFAULT_LEVELS = ("idiom", "phrasal")
+MAX_TEXT = 2000
 _DETECTOR = None
 _DETECTOR_LOCK = threading.Lock()    # 워커 하나에 스레드 여럿이다 (start.sh). spaCy는 한 번에 하나씩 돌린다
 
@@ -308,6 +352,17 @@ def get_detector():
     return _DETECTOR
 
 
+def detect_text(text, levels=None):
+    """문장 속 숙어. 기본은 idiom·phrasal만. 탐지기가 없으면 None."""
+    with _DETECTOR_LOCK:
+        detector = get_detector()
+        if detector is None:
+            return None
+        results = detector.find(text)
+    levels = levels or DEFAULT_LEVELS
+    return [r for r in results if r["level"] in levels]
+
+
 @app.route("/api/idioms/detect", methods=["POST"])
 def idioms_detect():
     """문장 속 숙어 찾기. docs/idiom_detection.md §7.
@@ -318,15 +373,12 @@ def idioms_detect():
     text = (body.get("text") or "").strip()
     if not text:
         return jsonify({"error": "text required"}), 400
-    if len(text) > 2000:
-        return jsonify({"error": "text too long (max 2000)"}), 400
-    with _DETECTOR_LOCK:
-        detector = get_detector()
-        if detector is None:
-            return jsonify({"error": "idiom detector not available"}), 503
-        results = detector.find(text)
-    levels = body.get("levels") or DEFAULT_LEVELS
-    return jsonify({"text": text, "results": [r for r in results if r["level"] in levels]})
+    if len(text) > MAX_TEXT:
+        return jsonify({"error": f"text too long (max {MAX_TEXT})"}), 400
+    results = detect_text(text, body.get("levels"))
+    if results is None:
+        return jsonify({"error": "idiom detector not available"}), 503
+    return jsonify({"text": text, "results": results})
 
 
 @app.route("/api/search")

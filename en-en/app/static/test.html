@@ -76,6 +76,7 @@
     <input id="q" placeholder="영어 단어 (예: object)" autocomplete="off" autofocus>
     <button>찾기</button>
   </form>
+  <input id="ctx" placeholder="문장 (선택): 단어가 나온 문장을 넣으면 그 문장 속 숙어를 같이 찾는다" autocomplete="off" style="width:100%">
   <div class="chips" id="chips"></div>
 
   <div id="out"></div>
@@ -146,6 +147,30 @@ function render(data) {
   sum.append(el("div", "pos", "이 철자의 모든 등급"), levelsRow(data.levels || []));
   out.append(sum);
 
+  if (data.in_sentence && data.in_sentence.length) {
+    const card = el("div", "card");
+    card.append(el("div", "pos", "이 문장에서 이 단어가 든 숙어"));
+    data.in_sentence.forEach((r) => {
+      const hit = el("div", "idiom-hit");
+      hit.append(el("strong", null, r.idiom), el("span", "lv", r.as_found));
+      const first = r.senses.find((s) => !s.literal);
+      if (first) hit.append(el("div", "ex", first.gloss));
+      card.append(hit);
+    });
+    out.append(card);
+  }
+  if (data.idioms && data.idioms.total) {
+    const card = el("div", "card");
+    card.append(el("div", "pos", `이 단어가 든 숙어 (${data.idioms.total}개 중 ${data.idioms.items.length}개)`));
+    data.idioms.items.forEach((r) => {
+      const hit = el("div", "idiom-hit");
+      hit.append(el("strong", null, r.phrase), el("span", "lv", LEVEL[r.level]));
+      if (r.meaning) hit.append(el("div", "ex", r.meaning));
+      card.append(hit);
+    });
+    out.append(card);
+  }
+
   data.results.forEach((r) => {
     const card = el("div", "card");
     const head = el("div", "head");
@@ -186,7 +211,9 @@ async function lookup(word) {
   $("#q").value = word;
   history.replaceState(null, "", "?w=" + encodeURIComponent(word));
   try {
-    const res = await fetch("/api/lookup?word=" + encodeURIComponent(word));
+    const ctx = $("#ctx").value.trim();
+    const res = await fetch("/api/lookup?word=" + encodeURIComponent(word)
+      + (ctx ? "&sentence=" + encodeURIComponent(ctx) : ""));
     render(await res.json());
   } catch (e) {
     $("#out").replaceChildren(el("p", "err", "API 호출 실패: " + e.message +

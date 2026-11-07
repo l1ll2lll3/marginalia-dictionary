@@ -75,6 +75,10 @@ class Pattern:
                 slot = t
         self.trail = slot
         self.fixed = [el.get("w") or el["lemma"] for el, _ in self.steps]
+        # 동사가 아닌 소유격 숙어는 문자 그대로 쓰일 때가 많다 (in his eyes, in his pocket, at his feet).
+        # to my mind 같은 좋은 숙어와 태그로 구별되지 않아서 전부 기본 화면에서 뺀다. 검색에는 나온다
+        if self.pos != "verb" and "POSS" in (self.lead, self.trail, *(s for _, s in self.steps)):
+            self.level = "phrase"
 
 
 def too_weak(pat, idiomatic):

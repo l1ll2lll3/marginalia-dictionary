@@ -269,10 +269,39 @@ async function lookupWord(q, el) {
       </div>`;
       html += '</div>';
     }
+    html += renderWordIdioms(data.idioms);
   }
   el.innerHTML = html;
+  bindIdiomPicks(el);
+  const more = el.querySelector('.idioms-more');
+  if (more) more.onclick = () => moreWordIdioms(q, el);
   // Load user examples for each entry
   el.querySelectorAll('.ux-list').forEach(el => loadExamples(el));
+}
+
+// 이 단어가 든 숙어. 단어만 찾아도 숙어를 접하게 한다
+function renderWordIdioms(idioms) {
+  if (!idioms || !idioms.total) return '';
+  const shown = idioms.items.length;
+  return `<div class="word-idioms"><div class="user-examples-title">Idioms with this word (${idioms.total})</div>` +
+    renderIdioms(idioms.items) +
+    (idioms.total > shown ? `<span class="contribute-toggle idioms-more">Show more</span>` : '') + '</div>';
+}
+
+async function moreWordIdioms(q, el) {
+  const res = await fetch(`/api/lookup?word=${encodeURIComponent(q)}&idiom_limit=200`);
+  const data = await res.json();
+  el.querySelector('.word-idioms').outerHTML = renderWordIdioms(data.idioms);
+  bindIdiomPicks(el);
+  const more = el.querySelector('.idioms-more');
+  if (more) more.remove();
+}
+
+function bindIdiomPicks(el) {
+  el.querySelectorAll('.idiom-phrase').forEach(n => {
+    n.style.cursor = 'pointer';
+    n.onclick = () => { document.getElementById('q').value = n.textContent; doSearch(); };
+  });
 }
 
 async function lookupIdiom(q, el) {
@@ -282,10 +311,7 @@ async function lookupIdiom(q, el) {
     el.innerHTML = `<div class="empty">No idiom found for "${esc(q)}"</div>`;
   } else if (data.match === 'candidates') {
     el.innerHTML = `<div class="suggestion">No exact match. Did you mean one of these?</div>` + renderIdioms(data.results);
-    el.querySelectorAll('.idiom-phrase').forEach(n => {
-      n.style.cursor = 'pointer';
-      n.onclick = () => { document.getElementById('q').value = n.textContent; doSearch(); };
-    });
+    bindIdiomPicks(el);
   } else {
     el.innerHTML = renderIdioms(data.results);
   }

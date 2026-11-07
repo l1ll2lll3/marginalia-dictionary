@@ -313,7 +313,19 @@ v2 기준선 (2026-11-07, `en_core_web_sm`, 예문 61,074개):
 
 판정 기준: 그 문장의 쓰임이 사전 뜻 중 하나로 설명되면 맞음. 단어만 맞고 뜻이 다르면 틀림 (hands on her daughter's head ≠ on one's head). 구현자(Claude)가 혼자 판정했고 표본이 작아서 대략 ±9%p로 봐야 한다. 앞서 달과 6펜스를 보면서 어림한 85%는 규칙을 맞춘 책이라 높게 나온 값이었다.
 
-떨어진 쪽 틀린 33개 중 15개는 **소유격 + 신체 표현이 문자 그대로 쓰인 경우**다 (in his eyes, in his face, in his pocket, at his feet, turn your head). 구조는 맞는데 뜻이 다르다. 나머지는 구조가 틀린 경우다 (do myself the honour → do the honors, made him do → make do).
+떨어진 쪽 틀린 33개 중 15개는 **소유격 + 신체 표현이 문자 그대로 쓰인 경우**였다 (in his eyes, in his face, in his pocket, at his feet, turn your head). 구조는 맞는데 뜻이 다르다. 나머지는 구조가 틀린 경우다 (do myself the honour → do the honors, made him do → make do).
+
+그래서 **동사가 아닌 소유격 숙어를 전부 기본 화면에서 뺐다** (탐지 결과의 level을 phrase로 내린다). in one's pocket과 to one's mind가 같은 `idiomatic` 태그를 달고 있어서 태그로는 구별되지 않는다. 도리언 표본에서는 오탐 13개와 함께 맞는 탐지 4개(on his mind, at your door 등)도 빠진다. 같은 표본에서 떨어진 쪽이 67%에서 76%로 오른다. 빠진 숙어는 사전 검색과 단어의 숙어 목록에서 찾을 수 있다.
+
+바꾼 뒤 또 다른 책 *위대한 개츠비*로 다시 쟀다 (`--seed 11`, 같은 판정 기준):
+
+| 구분 | 책 전체 탐지 | 표본 | 맞음 |
+|---|---|---|---|
+| 떨어짐 | 161 | 100 | 81% |
+| 붙음 | 1,316 | 100 | 82% |
+| 전체 (탐지 수로 가중) | 1,477 | 200 | **약 82%** |
+
+책이 달라서 77%와 그대로 비교할 수는 없다. 규칙의 효과는 위의 같은 표본 비교(67% → 76%)로 봐야 한다. 개츠비의 떨어진 쪽 오탐 19개 중 7개는 동사 소유격 숙어가 문자 그대로 쓰인 경우다 (turned her head, opened his eyes, held my hand).
 
 읽는 법: v2의 약점은 **아는 숙어의 범위**다. 아는 숙어 안에서는 불연속 재현율이 80.8%로 높지만, 전체로 보면 47.7%다. 자리표시어 숙어는 하나도 모른다. 못 찾은 불연속 예문에는 3단어 이상 숙어가 많다 (rake him over the coals, nip it in the bud, put West Ham to the sword, keep close tabs on him). v2가 고정 틀을 20개만 알기 때문이다.
 
@@ -388,7 +400,7 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
 6. **reading 쪽 교체**: `extract_english_idioms_v2.py`를 이 탐지기로 바꾸는 건 reading 세션에서 한다. `book_package.json`의 숙어 주석 형식은 reading에 맞춘다.
 7. **태그 없는 명사 숙어**: snake in the grass, trick of the light, ghost in the machine은 명사이고 숙어 표시가 없어서 빠졌다(§4.1). 명사를 기능어(of, in, the …)가 든 것까지 넓히면 들어오지만 republic of the congo 같은 이름도 같이 들어온다. 평가 뒤에 정한다.
 8. **화면에 무엇을 보여줄지**: idiom·phrasal만 기본으로 보여주기로 정했다 (2026-11-07). of course 같은 유용한 phrase는 빠진다. 사전 검색에는 그대로 나온다.
-9. **소유격 + 신체 표현**: in his eyes, in his pocket처럼 문자 그대로 쓰인 탐지가 떨어진 쪽 오탐의 절반쯤이다(§6). 어떻게 거를지 정해야 한다.
+9. **동사 소유격 숙어의 문자 그대로 쓰임**: turned her head, opened his eyes처럼 동사 숙어도 문자 그대로 쓰인다(§6). 태그로 구별되지 않고, 뜻 고르기 없이는 풀기 어렵다.
 
 ---
 
@@ -399,6 +411,11 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
 - `idiom_words` 표(숙어별 고정 단어)로 단어 단위로 찾는다. 예전의 `LIKE '%up%'`는 cup에도 걸렸다.
 - 입력 단어는 `word_links`로 원형을 찾는다 (took → take). spaCy를 쓰지 않는다.
 - 점수 = 입력 중 숙어에 든 비율 × 숙어 중 입력에 든 비율. 드문 단어일수록 무겁게 센다 (idf). 어순이 같으면 조금 더 준다. 두 단어 이상 넣으면 두 단어는 맞아야 후보다.
+
+단어 페이지 (`/api/lookup`):
+
+- `idioms`: 이 단어가 든 숙어. 활용형으로 찾아도 원형의 숙어가 나온다 (took → take). idiom → phrasal → phrase 순서이고 같으면 Wiktionary 예문이 많은 쪽이 먼저다. 기본 10개, `idiom_limit`로 200개까지 준다. 단어만 찾아도 숙어를 접하게 하려는 것이다.
+- `in_sentence`: `sentence`를 같이 주면 그 문장에서 찾은 숙어 중 이 단어가 든 것을 준다. 책에서 단어를 눌렀을 때 쓴다. took를 눌러도 account를 눌러도 take into account가 나온다. 숙어 사이에 낀 말(cost)을 누르면 나오지 않는다.
 
 Wiktionary와 비교 (2026-11-07): Wiktionary도 숙어는 독립 표제어이고 이런 형태 변화를 찾아 주는 장치는 없다. 활용형 페이지와 손으로 만든 넘겨주기(make up my mind → make up one's mind, take someone to task → take to task)가 있을 뿐이다. make up his mind, make one's mind up은 페이지가 없고, take the cost into account, made up his mind를 검색하면 숙어가 위쪽에 나오지 않는다.
 
