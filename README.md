@@ -45,6 +45,7 @@ marginalia-dictionary/
 │   │   ├── build_dict_db.py          kaikki JSONL → dict.db
 │   │   ├── build_levels.py           dict.db + word_levels (CEFR, 교육과정)
 │   │   ├── build_idioms.py           dict.db + 숙어 표 (kaikki에서 직접, 탐지 패턴 포함)
+│   │   ├── eval_idioms.py            숙어 탐지기 평가 (kaikki 예문이 정답)
 │   │   ├── parse_kr_curriculum.py    교육과정 PDF → CSV
 │   │   ├── dict.py                   CLI 조회
 │   │   ├── extract_pronunciations.py 품사별 미국식 발음 선택 (개선된 로직)
@@ -131,7 +132,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
    - ko·zh가 표제어인 쪽(ko-en, zh-en, ko-zh, zh-ko)은 KRDICT와 CC-CEDICT로 만든다.
    - 다 되면 JSON을 리포에서 뺀다. reading 쪽에서 이 JSON을 쓰는 `api_server.py`(`/api/dictionary/lookup`)와 `add_vocab_translations.py`는 reading 세션에서 새 표로 바꾼다.
 5. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
-6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). 숙어 목록·패턴 빌드(`build_idioms.py`)는 했고, 다음은 평가(`eval_idioms.py`, reading의 `extract_english_idioms_v2.py`로 기준선)와 탐지기(`idiom_detect.py`)다.
+6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). 숙어 목록·패턴 빌드(`build_idioms.py`)와 평가(`eval_idioms.py`, v2 기준선)는 했고, 다음은 탐지기(`idiom_detect.py`)다.
 
 ## 라이선스
 

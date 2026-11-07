@@ -3,3 +3,4 @@ gunicorn==23.0.0
 wordfreq
 pypdf
 spacy==3.8.16      # 숙어 패턴 토큰화 (build_idioms.py), 탐지
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

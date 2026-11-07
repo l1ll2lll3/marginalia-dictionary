@@ -3,6 +3,7 @@
 *.db
 *.db.gz
 *.db-journal
+*.spacy
 shared/data/raw/
 
 # 환경
