@@ -4,9 +4,11 @@ Marginalia English Dictionary — Web API + UI
 SQLite-backed Wiktionary dictionary (1.4M words + 70K idioms)
 """
 
+import math
 import sqlite3
 import os
 import re
+import threading
 from flask import Flask, request, jsonify, send_from_directory
 
 app = Flask(__name__, static_folder="static")
@@ -187,6 +189,69 @@ def stats():
     return jsonify(out)
 
 
+LEVEL_BONUS = {"idiom": 0.06, "phrasal": 0.03, "phrase": 0.0}
+
+
+def lemmas_of(conn, word):
+    """단어와 그 원형들 (took → take, minds → mind). 사전의 활용형 연결을 쓴다."""
+    forms = {word}
+    forms.update(r[0].lower() for r in conn.execute("""
+        SELECT l.target FROM words w JOIN word_links l ON l.word_id = w.id
+        WHERE w.word_normalized = ? AND l.kind = 'form_of'""", (word,)))
+    return forms
+
+
+def idiom_candidates(conn, query, limit=15):
+    """입력과 단어가 겹치는 숙어 후보. docs/idiom_detection.md §9.
+
+    take account, took into, look * up, take the cost into account를 다 받는다.
+    점수 = 입력 중 숙어에 든 비율 × 숙어 중 입력에 든 비율. 단어마다 드물수록 큰
+    가중치(idf)를 준다. account가 맞는 것이 into가 맞는 것보다 훨씬 중요하기 때문이다.
+    단어 단위로 찾으므로 up이 cup에 걸리지 않는다. spaCy를 쓰지 않는다.
+    """
+    if not has_table(conn, "idiom_words"):
+        return []
+    tokens = [t for t in re.findall(r"[a-z0-9'-]+", normalize(query).replace("\u2019", "'"))]
+    if not tokens:
+        return []
+    total = conn.execute("SELECT COUNT(DISTINCT idiom_id) FROM idiom_words").fetchone()[0]
+
+    def idf(word):
+        df = conn.execute("SELECT COUNT(*) FROM idiom_words WHERE word = ?", (word,)).fetchone()[0]
+        return math.log((total + 1) / (df + 1)) + 1
+
+    weight = {}
+    hits = {}                        # idiom_id → {입력 토큰 번호: (숙어 단어, 위치)}
+    for k, token in enumerate(tokens):
+        forms = lemmas_of(conn, token)
+        weight[k] = max(idf(f) for f in forms)
+        marks = ",".join("?" * len(forms))
+        for iid, word, position in conn.execute(
+                f"SELECT idiom_id, word, position FROM idiom_words WHERE word IN ({marks})", tuple(forms)):
+            hits.setdefault(iid, {}).setdefault(k, (word, position))
+
+    query_total = sum(weight.values())
+    # 입력 쪽 점수로 먼저 줄인다. 흔한 단어 하나만 맞는 숙어가 수천 개일 수 있다
+    best = sorted(hits, key=lambda i: -sum(weight[k] for k in hits[i]))[:300]
+    scored = {}
+    for iid in best:
+        matched = hits[iid]
+        words = {r[0] for r in conn.execute("SELECT word FROM idiom_words WHERE idiom_id = ?", (iid,))}
+        got = {w for w, _ in matched.values()}
+        idiom_cover = sum(idf(w) for w in got) / sum(idf(w) for w in words)
+        query_cover = sum(weight[k] for k in matched) / query_total
+        positions = [p for _, p in (matched[k] for k in sorted(matched))]
+        in_order = positions == sorted(positions)
+        row = conn.execute("SELECT phrase, meaning, level FROM idioms WHERE id = ?", (iid,)).fetchone()
+        score = query_cover * idiom_cover + LEVEL_BONUS[row["level"]] + (0.05 if in_order else 0)
+        if len(tokens) > 1 and len(matched) < 2:
+            continue                 # 두 단어 이상 넣었으면 두 단어는 맞아야 후보다
+        if row["phrase"] not in scored or score > scored[row["phrase"]]["score"]:
+            scored[row["phrase"]] = {"phrase": row["phrase"], "meaning": row["meaning"], "level": row["level"],
+                                     "score": round(score, 3)}
+    return sorted(scored.values(), key=lambda r: (-r["score"], len(r["phrase"])))[:limit]
+
+
 @app.route("/api/idiom")
 def idiom():
     phrase = request.args.get("phrase", "").strip()
@@ -213,36 +278,24 @@ def idiom():
             c.execute("SELECT phrase, meaning FROM idioms WHERE phrase_normalized = ?", (stripped,))
             rows = c.fetchall()
 
-    # Keyword match fallback — find idioms containing ALL query words
-    if not rows:
-        words = norm.split()
-        if len(words) >= 2:
-            conditions = " AND ".join(["phrase_normalized LIKE ?"] * len(words))
-            params = ["%" + w + "%" for w in words]
-            c.execute(f"""
-                SELECT phrase, meaning FROM idioms
-                WHERE {conditions} LIMIT 20
-            """, params)
-            rows = c.fetchall()
-
-    # Partial match fallback (single substring)
-    if not rows:
-        c.execute("""
-            SELECT phrase, meaning FROM idioms
-            WHERE phrase_normalized LIKE ? LIMIT 10
-        """, ("%" + norm + "%",))
-        rows = c.fetchall()
-
-    results = [{"phrase": r["phrase"], "meaning": r["meaning"]} for r in rows]
+    if rows:
+        results = [{"phrase": r["phrase"], "meaning": r["meaning"]} for r in rows]
+        match = "exact"
+    else:
+        # 정확히 맞는 게 없으면 후보를 준다. 사용자가 고른다
+        results = idiom_candidates(conn, phrase)
+        match = "candidates"
     conn.close()
-    return jsonify({"query": phrase, "results": results})
+    return jsonify({"query": phrase, "match": match, "results": results})
 
 
+DEFAULT_LEVELS = ("idiom", "phrasal")
 _DETECTOR = None
+_DETECTOR_LOCK = threading.Lock()    # 워커 하나에 스레드 여럿이다 (start.sh). spaCy는 한 번에 하나씩 돌린다
 
 
 def get_detector():
-    """숙어 탐지기. spaCy 모델이 무거워서 처음 쓸 때 읽는다. 없으면 None."""
+    """숙어 탐지기. spaCy 모델이 무거워서 처음 쓸 때 읽는다. 없으면 None. 잠금 안에서 부른다."""
     global _DETECTOR
     if _DETECTOR is None:
         try:
@@ -257,21 +310,23 @@ def get_detector():
 
 @app.route("/api/idioms/detect", methods=["POST"])
 def idioms_detect():
-    """문장 속 숙어 찾기. docs/idiom_detection.md §7. level로 거를 수 있다 (idiom,phrasal,phrase)."""
+    """문장 속 숙어 찾기. docs/idiom_detection.md §7.
+
+    기본은 idiom·phrasal만 준다. 고정 표현까지 보려면 levels에 phrase를 넣는다.
+    """
     body = request.get_json(silent=True) or {}
     text = (body.get("text") or "").strip()
     if not text:
         return jsonify({"error": "text required"}), 400
     if len(text) > 2000:
         return jsonify({"error": "text too long (max 2000)"}), 400
-    detector = get_detector()
-    if detector is None:
-        return jsonify({"error": "idiom detector not available"}), 503
-    results = detector.find(text)
-    levels = body.get("levels")
-    if levels:
-        results = [r for r in results if r["level"] in levels]
-    return jsonify({"text": text, "results": results})
+    with _DETECTOR_LOCK:
+        detector = get_detector()
+        if detector is None:
+            return jsonify({"error": "idiom detector not available"}), 503
+        results = detector.find(text)
+    levels = body.get("levels") or DEFAULT_LEVELS
+    return jsonify({"text": text, "results": [r for r in results if r["level"] in levels]})
 
 
 @app.route("/api/search")

@@ -86,6 +86,7 @@
     <input id="idiomText" placeholder="문장 (예: She took the cost into account.)" autocomplete="off">
     <button>찾기</button>
   </form>
+  <label class="sub"><input type="checkbox" id="idiomAll"> 고정 표현(of course, small room …)도 보기</label>
   <div class="chips" id="idiomChips"></div>
   <div id="idiomOut"></div>
 
@@ -217,7 +218,8 @@ async function detectIdioms(text) {
   const out = $("#idiomOut");
   try {
     const res = await fetch("/api/idioms/detect", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, levels: $("#idiomAll").checked ? ["idiom", "phrasal", "phrase"] : undefined }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);

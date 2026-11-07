@@ -8,7 +8,7 @@ Marginalia Dictionary(https://marginalia-dict.fly.dev/)가 쓰는 SQLite DB다. 
 .venv/bin/python en-en/scripts/build_dict_db.py        # words, senses, word_links, pronunciations (~45초)
 .venv/bin/python en-en/scripts/parse_kr_curriculum.py  # 교육과정 PDF → CSV (CSV는 git에 있으니 보통 생략)
 .venv/bin/python en-en/scripts/build_levels.py         # word_levels (~10초)
-.venv/bin/python en-en/scripts/build_idioms.py         # idioms, idiom_senses, idiom_examples, idiom_forms, idiom_patterns (~25초)
+.venv/bin/python en-en/scripts/build_idioms.py         # idioms, idiom_senses, idiom_examples, idiom_forms, idiom_patterns, idiom_words (~25초)
 ```
 
 - 2026-10-17 빌드 기준이다 (`kaikki-en.jsonl` 2026-09 덤프). 크기 430MB.
@@ -87,7 +87,8 @@ CREATE TABLE idioms (                -- 33,823행. 숙어 하나 = kaikki 원형
     phrase_normalized TEXT NOT NULL,
     meaning           TEXT,          -- 첫 숙어 뜻. 문자 그대로의 뜻("Used other than figuratively")은 건너뛴다
     pos               TEXT,
-    included_by       TEXT           -- 숙어로 넣은 이유: idiomatic, phrasal, pos:verb, figuratively …
+    included_by       TEXT,          -- 숙어로 넣은 이유: idiomatic, phrasal, pos:verb, figuratively …
+    level             TEXT NOT NULL  -- idiom | phrasal | phrase. Wiktionary 표시로 나눈 값 (build_idioms.level_of)
 );
 CREATE TABLE idiom_senses (          -- 49,544행. 뜻 전부
     idiom_id  INTEGER NOT NULL REFERENCES idioms(id),
@@ -116,6 +117,11 @@ CREATE TABLE idiom_patterns (        -- 38,453행. 탐지용. 원형과 이형�
     anchor   TEXT NOT NULL,          -- 가장 드문 고정 단어 (후보 찾기 열쇠)
     n_fixed  INTEGER NOT NULL        -- 고정 단어 수
 );
+CREATE TABLE idiom_words (           -- 107,723행. 사전 검색 후보용 단어 색인
+    idiom_id INTEGER NOT NULL REFERENCES idioms(id),
+    word     TEXT NOT NULL,          -- 고정 단어. 동사는 원형
+    position INTEGER NOT NULL
+);
 ```
 
 `pattern`의 원소 (`docs/idiom_detection.md` §4.2):
@@ -137,7 +143,7 @@ keep an eye on      → keep an eye on
 
 확인: `.venv/bin/python en-en/scripts/build_idioms.py --check "take into account" "look up"`
 
-`/api/idiom`은 `idioms`에서 못 찾으면 `idiom_forms`에서 찾는다 (took into account → take into account).
+`/api/idiom`은 `idioms`에서 못 찾으면 `idiom_forms`에서 찾고, 그래도 없으면 `idiom_words`로 후보를 준다 (`docs/idiom_detection.md` §9).
 
 ### user_examples — 사용자 예문 (운영 DB에만 있음)
 

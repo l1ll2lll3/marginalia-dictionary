@@ -301,7 +301,7 @@ def evaluate(detector, docs, examples, idioms, names, misses, extras):
                 print(f"  [{idioms[e['idiom']]['phrase']}] {e['text'][:110]}")
 
 
-def book_sample(nlp, book, sample, out):
+def book_sample(nlp, book, sample, out, levels, seed):
     """책 문장의 탐지 결과를 무작위로 뽑아 사람이 볼 파일을 만든다 (정밀도는 정답이 없다).
 
     붙어 있는 것과 떨어진 것을 반씩 뽑는다. 떨어진 쪽이 오탐 위험이 크고 수가 적기 때문이다.
@@ -313,17 +313,17 @@ def book_sample(nlp, book, sample, out):
         sentences = [(s["id"], s["text"]) for ch in json.load(f)["chapters"] for s in ch["sentences"]]
     hits = []
     for (sid, _), doc in zip(sentences, nlp.pipe((t for _, t in sentences), batch_size=256)):
-        hits.extend({**r, "sid": sid, "text": doc.text} for r in detector.detect(doc))
+        hits.extend({**r, "sid": sid, "text": doc.text} for r in detector.detect(doc) if r["level"] in levels)
     split = [h for h in hits if not h["continuous"]]
     joined = [h for h in hits if h["continuous"]]
     print(f"문장 {len(sentences):,}개에서 {len(hits):,}개 탐지 (붙음 {len(joined):,} · 떨어짐 {len(split):,})")
-    rng = random.Random(0)
+    rng = random.Random(seed)
     half = sample // 2
     picked = rng.sample(split, min(half, len(split))) + rng.sample(joined, min(sample - half, len(joined)))
     with open(out, "w", encoding="utf-8") as f:
-        f.write("판정\t숙어\t찾은 말\t떨어짐\t문장 id\t문장\n")
+        f.write("판정\t숙어\t찾은 말\t구분\t문장 id\t문장\n")
         for h in picked:
-            f.write(f"\t{h['idiom']}\t{h['as_found']}\t{'' if h['continuous'] else 'Y'}\t{h['sid']}\t{h['text']}\n")
+            f.write(f"\t{h['idiom']}\t{h['as_found']}\t{'붙음' if h['continuous'] else '떨어짐'}\t{h['sid']}\t{h['text']}\n")
     print(f"검토 파일: {out} ({len(picked)}개)")
 
 
@@ -336,12 +336,14 @@ def main():
     parser.add_argument("--misses", type=int, default=0, help="못 찾은 예문을 세트마다 이만큼 보여준다")
     parser.add_argument("--book", help="book_package.json. 탐지 결과 샘플을 --out에 쓴다")
     parser.add_argument("--sample", type=int, default=200)
+    parser.add_argument("--levels", default="idiom,phrasal", help="샘플에 넣을 level (화면 기본값과 같게)")
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", default=str(DB_PATH.parent / "idiom_review.tsv"))
     parser.add_argument("--extras", type=int, default=0, help="예문의 숙어가 아닌데 많이 잡힌 숙어를 이만큼 보여준다")
     args = parser.parse_args()
 
     if args.book:
-        book_sample(spacy.load(args.model), args.book, args.sample, args.out)
+        book_sample(spacy.load(args.model), args.book, args.sample, args.out, args.levels.split(","), args.seed)
         return
 
     tokenizer = spacy.blank("en").tokenizer

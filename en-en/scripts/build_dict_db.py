@@ -62,6 +62,7 @@ def build():
         DROP TABLE IF EXISTS idiom_examples;
         DROP TABLE IF EXISTS idiom_forms;
         DROP TABLE IF EXISTS idiom_patterns;
+        DROP TABLE IF EXISTS idiom_words;
 
         CREATE TABLE words (
             id INTEGER PRIMARY KEY,

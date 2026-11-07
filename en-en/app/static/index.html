@@ -181,8 +181,8 @@ function setMode(m) {
 }
 
 function autoMode(q) {
-  if (q.includes('*') || q.includes('?')) return 'search';
   if (q.includes(' ')) return 'idiom';
+  if (q.includes('*') || q.includes('?')) return 'search';
   return 'word';
 }
 
@@ -280,6 +280,12 @@ async function lookupIdiom(q, el) {
   const data = await res.json();
   if (data.results.length === 0) {
     el.innerHTML = `<div class="empty">No idiom found for "${esc(q)}"</div>`;
+  } else if (data.match === 'candidates') {
+    el.innerHTML = `<div class="suggestion">No exact match. Did you mean one of these?</div>` + renderIdioms(data.results);
+    el.querySelectorAll('.idiom-phrase').forEach(n => {
+      n.style.cursor = 'pointer';
+      n.onclick = () => { document.getElementById('q').value = n.textContent; doSearch(); };
+    });
   } else {
     el.innerHTML = renderIdioms(data.results);
   }
@@ -289,7 +295,7 @@ function renderIdioms(results) {
   return results.map(r =>
     `<div class="idiom-entry">
       <span class="idiom-phrase">${esc(r.phrase)}</span>
-      <span class="idiom-tag">idiom</span>
+      <span class="idiom-tag">${esc(r.level || 'idiom')}</span>
       ${r.meaning ? `<div class="idiom-meaning">${esc(r.meaning)}</div>` : ''}
     </div>`
   ).join('');

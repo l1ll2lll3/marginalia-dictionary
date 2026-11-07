@@ -303,7 +303,17 @@ v2 기준선 (2026-11-07, `en_core_web_sm`, 예문 61,074개):
 
 회귀 사례 10/11 (v2는 5/11). 실패한 하나는 looked up the street이고, sm 모델이 up을 불변화사로 분석한다. 달과 6펜스 5,116문장에서 3,535개를 찾는다 (떨어진 것 432개).
 
-정밀도는 아직 사람이 정식으로 재지 않았다. 구현하면서 샘플을 읽어 본 바로는 떨어진 탐지의 85% 안팎이 맞았다. 이건 구현자의 어림값이다. `eval_idioms.py --book`이 만드는 `idiom_review.tsv` 200개를 사용자가 판정하면 정식 수치가 된다.
+정밀도 (2026-11-07): 규칙을 고칠 때 보지 않은 *도리언 그레이의 초상*에서 화면 기본값(idiom·phrasal)의 탐지 200개를 무작위로 뽑아 판정했다 (`eval_idioms.py --book … --seed 7`).
+
+| 구분 | 책 전체 탐지 | 표본 | 맞음 |
+|---|---|---|---|
+| 떨어짐 | 258 | 100 | 67% |
+| 붙음 | 1,746 | 100 | 78% |
+| 전체 (탐지 수로 가중) | 2,004 | 200 | **약 77%** |
+
+판정 기준: 그 문장의 쓰임이 사전 뜻 중 하나로 설명되면 맞음. 단어만 맞고 뜻이 다르면 틀림 (hands on her daughter's head ≠ on one's head). 구현자(Claude)가 혼자 판정했고 표본이 작아서 대략 ±9%p로 봐야 한다. 앞서 달과 6펜스를 보면서 어림한 85%는 규칙을 맞춘 책이라 높게 나온 값이었다.
+
+떨어진 쪽 틀린 33개 중 15개는 **소유격 + 신체 표현이 문자 그대로 쓰인 경우**다 (in his eyes, in his face, in his pocket, at his feet, turn your head). 구조는 맞는데 뜻이 다르다. 나머지는 구조가 틀린 경우다 (do myself the honour → do the honors, made him do → make do).
 
 읽는 법: v2의 약점은 **아는 숙어의 범위**다. 아는 숙어 안에서는 불연속 재현율이 80.8%로 높지만, 전체로 보면 47.7%다. 자리표시어 숙어는 하나도 모른다. 못 찾은 불연속 예문에는 3단어 이상 숙어가 많다 (rake him over the coals, nip it in the bud, put West Ham to the sword, keep close tabs on him). v2가 고정 틀을 20개만 알기 때문이다.
 
@@ -353,7 +363,9 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
 
 요청에 `"levels": ["idiom", "phrasal"]`을 주면 그 level만 돌려준다. spaCy는 처음 요청 때 읽는다 (워커당 약 220MB, 첫 요청 약 1초, 그 뒤 문장당 수 ms). `/test` 페이지에 숙어 탐지 칸이 있다.
 
-아직 안 한 것: `/api/idiom`이 뜻을 전부 돌려주게 하고, `LIKE '%단어%'` 부분 일치는 단어 경계 일치로 바꾼다.
+기본은 idiom·phrasal만 돌려준다. 고정 표현까지 보려면 `levels`에 phrase를 넣는다. 서버는 워커 1개 + 스레드 4개로 돌린다 (`start.sh`). spaCy는 잠금으로 한 번에 하나씩 돌린다.
+
+아직 안 한 것: `/api/idiom`이 뜻을 전부 돌려주게 한다.
 
 ---
 
@@ -369,17 +381,30 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
    | trf (3,000개 표본) | 484MB + torch | 79.1% | 84.8% | 88.3% | 10/11 |
 
    trf는 표본에서 조금 높지만 불연속 134개 중 4개 차이라서 의미 있는 차이라고 보기 어렵다. 메모리와 속도 부담에 비해 이득이 작다. looked up the street은 세 모델 다 틀린다. 모델을 바꿔서 풀리는 문제가 아니다.
-2. **서버에서 돌릴지**: Fly VM이 shared-cpu-1x, 512MB다. 재 보니 탐지기를 읽은 워커 하나가 약 220MB라서 gunicorn 워커 2개면 약 440MB다. 빠듯하다. 워커를 1개로 줄이거나 VM을 1GB로 올리거나, 책은 미리 계산해 두고 서버는 사전 조회만 한다.
+2. **서버**: 워커 1개 + 스레드 4개로 정했다 (2026-11-07). 탐지기를 읽은 워커가 약 220MB라 워커 2개면 512MB VM에 빠듯하다. 동시 접속이 늘면 VM을 1GB로 올린다.
 3. **뜻 고르기**: look up처럼 뜻이 여럿이면 처음에는 전부 보여준다. 문맥에 맞는 뜻 고르기는 reading의 `sense_select.py`와 묶어서 나중에 한다.
 4. **관사·수의 변이**: keep **their eyes** on, take **a** hold of처럼 고정 단어 자체가 바뀌는 경우다. 1차에서는 다루지 않고, 평가에서 못 찾은 원인으로 얼마나 나오는지 보고 정한다.
 5. **어순이 바뀌는 경우**: 수동태(the cost was taken into account)는 `HEAD`와 `LIT`가 붙어 있어서 그대로 잡힌다. 관계절(the strings he pulled)이나 도치는 1차 범위 밖이다.
 6. **reading 쪽 교체**: `extract_english_idioms_v2.py`를 이 탐지기로 바꾸는 건 reading 세션에서 한다. `book_package.json`의 숙어 주석 형식은 reading에 맞춘다.
 7. **태그 없는 명사 숙어**: snake in the grass, trick of the light, ghost in the machine은 명사이고 숙어 표시가 없어서 빠졌다(§4.1). 명사를 기능어(of, in, the …)가 든 것까지 넓히면 들어오지만 republic of the congo 같은 이름도 같이 들어온다. 평가 뒤에 정한다.
-8. **화면에 무엇을 보여줄지**: small room, I think, open the door처럼 표시는 맞지만 문자 그대로 쓰인 탐지가 많다. `level`로 거를 수 있다. 기본값을 무엇으로 할지 정해야 한다.
+8. **화면에 무엇을 보여줄지**: idiom·phrasal만 기본으로 보여주기로 정했다 (2026-11-07). of course 같은 유용한 phrase는 빠진다. 사전 검색에는 그대로 나온다.
+9. **소유격 + 신체 표현**: in his eyes, in his pocket처럼 문자 그대로 쓰인 탐지가 떨어진 쪽 오탐의 절반쯤이다(§6). 어떻게 거를지 정해야 한다.
 
 ---
 
-## 9. 순서
+## 9. 사전 검색 후보
+
+`/api/idiom`은 표제어·활용형·이형에 정확히 맞는 게 없으면 후보를 준다 (`match: "candidates"`). 화면에서 후보를 눌러 고른다. take account, took into, look * up, take the cost into account, made up his mind를 다 받는다.
+
+- `idiom_words` 표(숙어별 고정 단어)로 단어 단위로 찾는다. 예전의 `LIKE '%up%'`는 cup에도 걸렸다.
+- 입력 단어는 `word_links`로 원형을 찾는다 (took → take). spaCy를 쓰지 않는다.
+- 점수 = 입력 중 숙어에 든 비율 × 숙어 중 입력에 든 비율. 드문 단어일수록 무겁게 센다 (idf). 어순이 같으면 조금 더 준다. 두 단어 이상 넣으면 두 단어는 맞아야 후보다.
+
+Wiktionary와 비교 (2026-11-07): Wiktionary도 숙어는 독립 표제어이고 이런 형태 변화를 찾아 주는 장치는 없다. 활용형 페이지와 손으로 만든 넘겨주기(make up my mind → make up one's mind, take someone to task → take to task)가 있을 뿐이다. make up his mind, make one's mind up은 페이지가 없고, take the cost into account, made up his mind를 검색하면 숙어가 위쪽에 나오지 않는다.
+
+---
+
+## 10. 순서
 
 1. ~~`build_idioms.py`: 목록 다시 만들기 + 지금 목록과의 차이 보고 (§4.1)~~ — 2026-11-07 완료
 2. ~~`eval_idioms.py`: 평가 세트를 만들고 **v2부터** 잰다. 기준선이 된다~~ — 2026-11-07 완료 (§6)

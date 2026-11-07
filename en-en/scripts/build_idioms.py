@@ -20,6 +20,7 @@
   idiom_examples  뜻별 예문. 평가(eval_idioms.py)와 화면 표시에 쓴다
   idiom_forms     활용형·이형 → 원형 (이름 검색용)
   idiom_patterns  탐지용 패턴. 원형과 이형마다 하나씩
+  idiom_words     숙어별 고정 단어 색인. 사전 검색 후보에 쓴다 (server.py의 idiom_candidates)
 """
 
 import argparse
@@ -113,6 +114,18 @@ def qualifies(entry, senses) -> list[str]:
     elif pos not in EXCLUDED_POS:
         why.append(f"pos:{pos}")
     return why
+
+
+def level_of(why):
+    """화면에서 무엇을 보여줄지 고르는 값. Wiktionary의 표시로 나눈다.
+
+    idiom    숙어·비유 표시가 있다 (take for granted)
+    phrasal  구동사 범주에 있다 (give up)
+    phrase   그 밖의 고정 표현 (of course, small room). 문자 그대로 쓰인 경우가 많다
+    """
+    if "idiomatic" in why or "figuratively" in why:
+        return "idiom"
+    return "phrasal" if "phrasal" in why else "phrase"
 
 
 def follow_links(word, next_hop, stop=()):
@@ -284,6 +297,7 @@ def build(compare_samples=0):
         DROP TABLE IF EXISTS idiom_examples;
         DROP TABLE IF EXISTS idiom_forms;
         DROP TABLE IF EXISTS idiom_patterns;
+        DROP TABLE IF EXISTS idiom_words;
 
         CREATE TABLE idioms (
             id                INTEGER PRIMARY KEY,
@@ -291,7 +305,8 @@ def build(compare_samples=0):
             phrase_normalized TEXT NOT NULL,
             meaning           TEXT,
             pos               TEXT,
-            included_by       TEXT          -- idiomatic,phrasal,phrase … (숙어로 넣은 이유)
+            included_by       TEXT,         -- idiomatic,phrasal,pos:verb … (숙어로 넣은 이유)
+            level             TEXT NOT NULL -- idiom | phrasal | phrase (level_of)
         );
         CREATE TABLE idiom_senses (
             idiom_id  INTEGER NOT NULL REFERENCES idioms(id),
@@ -320,6 +335,11 @@ def build(compare_samples=0):
             anchor   TEXT NOT NULL,         -- 가장 드문 고정 단어 (후보 찾기 열쇠)
             n_fixed  INTEGER NOT NULL
         );
+        CREATE TABLE idiom_words (
+            idiom_id INTEGER NOT NULL REFERENCES idioms(id),
+            word     TEXT NOT NULL,         -- 고정 단어. 동사는 원형
+            position INTEGER NOT NULL       -- 숙어 안의 순서 (어순 비교용)
+        );
     """)
 
     by_phrase = defaultdict(list)    # 정규형 → idiom id들
@@ -328,7 +348,8 @@ def build(compare_samples=0):
     for iid, b in enumerate(bases, 1):
         idiom_gloss = next((s["gloss"] for s in b["senses"] if not s["literal"]), None)
         meaning = idiom_gloss or (b["senses"][0]["gloss"] if b["senses"] else "")
-        idiom_rows.append((iid, b["word"], normalize(b["word"]), meaning, b["pos"], ",".join(b["why"])))
+        idiom_rows.append((iid, b["word"], normalize(b["word"]), meaning, b["pos"], ",".join(b["why"]),
+                           level_of(b["why"])))
         by_phrase[normalize(b["word"])].append(iid)
         for si, s in enumerate(b["senses"], 1):
             sense_rows.append((iid, si, s["gloss"], json.dumps(s["tags"]), int(s["literal"])))
@@ -362,24 +383,29 @@ def build(compare_samples=0):
     # 열쇠: 패턴 전체에서 가장 적게 나오는 고정 단어. 같으면 긴 단어
     key_count = Counter(k for _, _, p in pattern_src for k in set(fixed_keys(p)))
     pattern_rows = []
+    word_rows = set()
     for iid, source, p in pattern_src:
         keys = list(fixed_keys(p))
         if not keys:
             continue
+        word_rows.update((iid, w, i) for i, w in enumerate(keys) if any(ch.isalnum() for ch in w))
         anchor = min(keys, key=lambda k: (key_count[k], -len(k)))
         pattern_rows.append((iid, source, json.dumps(p, ensure_ascii=False), anchor, len(keys)))
 
-    c.executemany("INSERT INTO idioms VALUES (?,?,?,?,?,?)", idiom_rows)
+    c.executemany("INSERT INTO idioms VALUES (?,?,?,?,?,?,?)", idiom_rows)
     c.executemany("INSERT INTO idiom_senses VALUES (?,?,?,?,?)", sense_rows)
     c.executemany("INSERT INTO idiom_examples VALUES (?,?,?,?)", example_rows)
     c.executemany("INSERT INTO idiom_forms VALUES (?,?,?,?,?)", form_rows)
     c.executemany("INSERT INTO idiom_patterns VALUES (?,?,?,?,?)", pattern_rows)
+    c.executemany("INSERT INTO idiom_words VALUES (?,?,?)", sorted(word_rows))
     c.executescript("""
         CREATE INDEX idx_idioms_normalized ON idioms(phrase_normalized);
         CREATE INDEX idx_idiom_senses ON idiom_senses(idiom_id);
         CREATE INDEX idx_idiom_examples ON idiom_examples(idiom_id);
         CREATE INDEX idx_idiom_forms_normalized ON idiom_forms(form_normalized);
         CREATE INDEX idx_idiom_patterns_anchor ON idiom_patterns(anchor);
+        CREATE INDEX idx_idiom_words_word ON idiom_words(word);
+        CREATE INDEX idx_idiom_words_idiom ON idiom_words(idiom_id);
     """)
     conn.commit()
 

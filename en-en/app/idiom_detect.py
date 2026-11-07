@@ -77,18 +77,6 @@ class Pattern:
         self.fixed = [el.get("w") or el["lemma"] for el, _ in self.steps]
 
 
-def level_of(included_by):
-    """화면에서 무엇을 보여줄지 고르는 값.
-
-    idiom    Wiktionary가 숙어·비유로 표시했다 (take for granted)
-    phrasal  구동사 (look up, go out)
-    phrase   그 밖의 고정 표현 (of course, in order to, small room). 문자 그대로 쓰인 경우가 많다
-    """
-    if "idiomatic" in included_by or "figuratively" in included_by:
-        return "idiom"
-    return "phrasal" if "phrasal" in included_by else "phrase"
-
-
 def too_weak(pat, idiomatic):
     """Wiktionary에는 있지만 문장에서 숙어로 표시할 수 없는 패턴.
 
@@ -141,11 +129,11 @@ class IdiomDetector:
             "SELECT DISTINCT idiom_id FROM idiom_senses WHERE tags LIKE '%\"intransitive\"%'")}
         idiomatic = {r[0] for r in conn.execute(
             "SELECT DISTINCT idiom_id FROM idiom_senses WHERE tags LIKE '%\"idiomatic\"%'")}
-        for iid, phrase, norm, pos, pattern, anchor, n_fixed, included_by in conn.execute("""
-                SELECT i.id, i.phrase, i.phrase_normalized, i.pos, p.pattern, p.anchor, p.n_fixed, i.included_by
+        for iid, phrase, norm, pos, pattern, anchor, n_fixed, level in conn.execute("""
+                SELECT i.id, i.phrase, i.phrase_normalized, i.pos, p.pattern, p.anchor, p.n_fixed, i.level
                 FROM idiom_patterns p JOIN idioms i ON i.id = p.idiom_id"""):
             p = Pattern((iid, phrase, norm, pos, n_fixed, iid in intransitive and iid not in transitive,
-                         level_of(included_by.split(","))), json.loads(pattern))
+                         level), json.loads(pattern))
             if len(p.steps) < 2 or (not keep_function_phrases and too_weak(p, iid in idiomatic)):
                 continue
             self.by_anchor[anchor].append(p)
