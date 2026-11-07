@@ -133,6 +133,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
    - 다 되면 JSON을 리포에서 뺀다. reading 쪽에서 이 JSON을 쓰는 `api_server.py`(`/api/dictionary/lookup`)와 `add_vocab_translations.py`는 reading 세션에서 새 표로 바꾼다.
 5. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
 6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). 탐지기(`en-en/app/idiom_detect.py`)와 API(`POST /api/idioms/detect`)까지 만들었다 (불연속 재현율 80.2%, v2는 47.7%). 사전 검색 후보, 단어 페이지의 숙어 목록, 문장 속 숙어 연결(`/api/lookup?sentence=`)도 만들었다. 정밀도는 약 82%(위대한 개츠비 200개 표본, 구현자 판정). 남은 것: 운영 배포 (사용자가 아직 하지 말라고 했다).
+7. 검사 스크립트 (제안, 2026-11-07. 아직 안 정했다). 회귀 사례, API 시험, 화면 스크린샷을 명령 하나로 돌린다. 지금은 `index.html`과 `/test`를 브라우저로 확인한 적이 없다.
+   - 함께 검토한 자율 개발 루프(헤드리스 세션을 반복해서 돌리는 방식)는 전체 도입을 권하지 않았다. 숙어 표시의 가치처럼 합격 기준을 기계로 재기 어렵고, 혼자 돌면 자기 채점이 되고(어림 85% → 다른 책 77%), 평가용 책이 소모되기 때문이다. 쓴다면 `translations` 표처럼 범위가 분명한 작업 하나에, 바퀴 수를 제한하고 배포·push 권한 없이 쓴다.
 
 ## 라이선스
 
