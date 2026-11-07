@@ -2,7 +2,7 @@
 
 문장 하나를 받아서 그 안에 든 숙어를 찾는 기능의 설계다. 숙어 단어 사이에 다른 말이 끼어 있어도 찾는다 (take **the cost** into account, look **it** up).
 
-진행: §9의 2단계(평가, `en-en/scripts/eval_idioms.py`와 v2 기준선)까지 했다. 탐지기는 아직 없다.
+진행: 탐지기(`en-en/app/idiom_detect.py`)와 API(`POST /api/idioms/detect`)까지 구현했다. 운영 서버에는 아직 올리지 않았다.
 
 ---
 
@@ -209,7 +209,36 @@ v2는 끼는 말을 "토큰 0~2개"로 제한했다. 이걸 **"끼는 말이 문
    - 자리표시어(`POSS`·`NP`·`REFL`)에 맞은 구간
    - 숙어 안 단어를 꾸미는 수식어: 머리가 패턴 안의 `LIT` 토큰이고 dep이 amod·advmod인 토큰 (keep a **close** eye on)
 4. **구동사 검증** (v1·v2에서 가져옴): 불변화사가 `HEAD`에 prt나 advmod로 붙어 있어야 한다. 사이에 말이 끼었는데 불변화사가 prep이면 버린다.
-5. **겹침 정리**: 같은 토큰을 쓰는 매칭이 여럿이면 고정 단어가 많은 쪽을 남긴다. 다른 매칭에 완전히 포함되는 매칭은 버린다. 그래서 make up ⊂ make up one's mind면 make up one's mind만 남는다.
+5. **트리 경로** (`_catena`): 위에서 못 맞춘 동사 숙어는 구문 트리로 한 번 더 찾는다. 동사에서 시작해 부모-자식으로 **끊기지 않고** 고정 단어를 다 모을 수 있으면 맞다고 본다. 숙어 단어는 트리에서 이어져 있다(catena)는 성질을 쓴 것이다. give **you** pause, leave **his** home이 여기서 잡힌다. 자리표시어가 있는 숙어는 하지 않고(ring the bell ≠ ring someone's bell), conj·npadvmod·advcl·relcl 같은 관계로는 건너지 않는다.
+6. **겹침 정리**: 같은 토큰을 쓰는 매칭이 여럿이면 고정 단어가 많은 쪽을 남긴다. 그래서 make up one's mind가 맞으면 make up은 버린다. 대명사는 세지 않는다 (gave it up은 give it up이 아니라 give up).
+
+트리 경로를 넣기까지 측정한 값 (못 찾은 불연속 동사 숙어 708개 기준, 책은 달과 6펜스):
+
+| 조건 | 더 잡는 예문 | 책에서 늘어나는 탐지 |
+|---|---|---|
+| 동사의 하위 트리에 고정 단어가 다 있다 | 649 | 4,676 (went up to the attic → go to) |
+| 끊기지 않고 이어져 있다 (catena) | 572 | 1,883 (went back into → go into) |
+| catena + §4.3 4번 검증 | 327 | 450 |
+
+그 밖의 검증:
+- 동사가 아닌 숙어에는 낀 말을 허용하지 않는다 (On one occasion ≠ on occasion). 자리표시어 자리만 받는다.
+- be 숙어에 말이 끼면 버린다 (was a sensible man ≠ be a man).
+- to부정사의 to는 전치사가 아니다 (want to go).
+- 감탄사는 문장 앞에서만 받는다 (word up).
+- a/an은 서로 받는다 (keep a close eye on).
+- 복수 명사는 원형으로도 맞춘다 (red flags).
+
+탐지에서 뺀 패턴 (`too_weak`): 동사가 아닌 기능어만의 말(out of, up to), be·have·do가 조동사처럼 쓰이는 말(there be, have in, do it), 고정 단어가 약한 자리표시어 패턴(piece of [NP], take [NP] to).
+
+결과에는 `level`을 붙인다. 언어학 분류가 아니라 Wiktionary의 표시로 나눈 값이다.
+
+| level | 기준 | 개수 | 예 |
+|---|---|---|---|
+| `idiom` | 뜻에 `idiomatic`이나 `figuratively` 태그 | 11,740 | kick the bucket, eat one's words, look up |
+| `phrasal` | 태그는 없고 구동사 범주에 있음 | 3,895 | give up, look after |
+| `phrase` | 둘 다 없음 | 18,219 | of course, in order to, hold dear, small room |
+
+태그는 뜻 하나에 붙으므로 level은 "이 문장에서 숙어로 쓰였다"는 뜻이 아니라 "숙어 뜻이 있다"는 뜻이다.
 
 ### 4.4 손으로 정한 값
 
@@ -218,7 +247,8 @@ v2는 끼는 말을 "토큰 0~2개"로 제한했다. 이걸 **"끼는 말이 문
 - 자리표시어 단어 (one's, someone, something, oneself …): §3 표의 값 그대로
 - 전치사로만 쓰이는 말 (`PREP_ONLY`: of, with, to, for, at, from, into …)
 - 목적어 자리를 정하는 품사 묶음 (`OBJ_BEFORE_POS`, `NOMINAL_POS`)
-- 끼는 말로 받아 주는 dep 종류: dobj, dative, amod, advmod
+- 끼는 말로 받아 주는 dep 종류: 목적어(`OBJ_DEPS`), amod, advmod
+- 트리에서 건너지 않는 관계 (`NOT_IDIOM_LINK`)
 - 재귀대명사 목록
 
 ---
@@ -262,6 +292,19 @@ v2 기준선 (2026-11-07, `en_core_web_sm`, 예문 61,074개):
 
 회귀 사례 5/11 통과. 예문당 다른 숙어 탐지 0.22개. 이 수는 재현율과 달리 오탐만 세는 값이 아니다 (맞는 것도 섞여 있다). 정밀도는 실제 책 세트로 따로 재야 한다.
 
+새 탐지기 (2026-11-07, `en_core_web_sm`, 예문 61,176개. 숙어 표를 다시 빌드해서 예문 수가 조금 늘었다):
+
+| 세트 | 예문 | 찾음 | 재현율 | v2 |
+|---|---|---|---|---|
+| 연속 | 50,364 | 43,616 | 86.6% | 14.6% |
+| 자리표시어 | 3,610 | 3,033 | 84.0% | 0.0% |
+| 불연속 | 2,645 | 2,121 | **80.2%** | 47.7% |
+| 문자 그대로 | 1,493 | 1,272 | 85.2% | 8.7% |
+
+회귀 사례 10/11 (v2는 5/11). 실패한 하나는 looked up the street이고, sm 모델이 up을 불변화사로 분석한다. 달과 6펜스 5,116문장에서 3,535개를 찾는다 (떨어진 것 432개).
+
+정밀도는 아직 사람이 정식으로 재지 않았다. 구현하면서 샘플을 읽어 본 바로는 떨어진 탐지의 85% 안팎이 맞았다. 이건 구현자의 어림값이다. `eval_idioms.py --book`이 만드는 `idiom_review.tsv` 200개를 사용자가 판정하면 정식 수치가 된다.
+
 읽는 법: v2의 약점은 **아는 숙어의 범위**다. 아는 숙어 안에서는 불연속 재현율이 80.8%로 높지만, 전체로 보면 47.7%다. 자리표시어 숙어는 하나도 모른다. 못 찾은 불연속 예문에는 3단어 이상 숙어가 많다 (rake him over the coals, nip it in the bud, put West Ham to the sword, keep close tabs on him). v2가 고정 틀을 20개만 알기 때문이다.
 
 회귀 사례 기대값:
@@ -287,7 +330,7 @@ v2 기준선 (2026-11-07, `en_core_web_sm`, 예문 61,074개):
 | 파일 | 하는 일 |
 |---|---|
 | `en-en/scripts/build_idioms.py` | kaikki → `idioms`, `idiom_senses`, `idiom_patterns`. `build_dict_db.py`의 숙어 부분을 대신한다 |
-| `en-en/scripts/idiom_detect.py` | 탐지기 라이브러리 + CLI (`--text "…"`). reading이 import해서 쓴다 |
+| `en-en/app/idiom_detect.py` | 탐지기 라이브러리 + CLI (`--text "…"`). Docker가 app 폴더만 복사해서 scripts가 아니라 여기 둔다 |
 | `en-en/scripts/eval_idioms.py` | §6 평가. v2와 비교 |
 
 API (`en-en/app/server.py`):
@@ -301,26 +344,29 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
      "span": [4, 30],
      "gap": "the cost",
      "continuous": false,
-     "senses": [{"gloss": "To consider or regard; …", "tags": ["idiomatic"]}]
+     "level": "idiom",
+     "senses": [{"gloss": "To consider or regard; …", "tags": ["idiomatic"], "literal": false}]
    }]}
 ```
 
 `tokens`를 따로 주는 이유가 있다. 읽기 화면에서 took, into, account만 강조하고 the cost는 강조하지 않으려면 숙어 단어 각각의 위치가 필요하다.
 
-같이 고칠 것: `/api/idiom`이 뜻을 전부 돌려주게 하고, `LIKE '%단어%'` 부분 일치는 단어 경계 일치로 바꾼다.
+요청에 `"levels": ["idiom", "phrasal"]`을 주면 그 level만 돌려준다. spaCy는 처음 요청 때 읽는다 (워커당 약 220MB, 첫 요청 약 1초, 그 뒤 문장당 수 ms). `/test` 페이지에 숙어 탐지 칸이 있다.
+
+아직 안 한 것: `/api/idiom`이 뜻을 전부 돌려주게 하고, `LIKE '%단어%'` 부분 일치는 단어 경계 일치로 바꾼다.
 
 ---
 
 ## 8. 정하지 않은 것
 
 1. **spaCy 모델**: v2는 `en_core_web_sm`을 썼다. looked up the street 같은 구별은 sm 모델이 자주 틀린다. `en_core_web_lg`·`trf`로 평가 세트를 돌려 보고 정한다. trf는 정확하지만 느리고 무겁다.
-2. **서버에서 돌릴지**: Fly VM이 shared-cpu-1x, 512MB다. sm 모델은 들어갈 것 같지만 재 봐야 한다. 안 되면 책은 미리 계산해 두고(파이프라인), 서버는 사전 조회만 한다.
+2. **서버에서 돌릴지**: Fly VM이 shared-cpu-1x, 512MB다. 재 보니 탐지기를 읽은 워커 하나가 약 220MB라서 gunicorn 워커 2개면 약 440MB다. 빠듯하다. 워커를 1개로 줄이거나 VM을 1GB로 올리거나, 책은 미리 계산해 두고 서버는 사전 조회만 한다.
 3. **뜻 고르기**: look up처럼 뜻이 여럿이면 처음에는 전부 보여준다. 문맥에 맞는 뜻 고르기는 reading의 `sense_select.py`와 묶어서 나중에 한다.
 4. **관사·수의 변이**: keep **their eyes** on, take **a** hold of처럼 고정 단어 자체가 바뀌는 경우다. 1차에서는 다루지 않고, 평가에서 못 찾은 원인으로 얼마나 나오는지 보고 정한다.
 5. **어순이 바뀌는 경우**: 수동태(the cost was taken into account)는 `HEAD`와 `LIT`가 붙어 있어서 그대로 잡힌다. 관계절(the strings he pulled)이나 도치는 1차 범위 밖이다.
 6. **reading 쪽 교체**: `extract_english_idioms_v2.py`를 이 탐지기로 바꾸는 건 reading 세션에서 한다. `book_package.json`의 숙어 주석 형식은 reading에 맞춘다.
 7. **태그 없는 명사 숙어**: snake in the grass, trick of the light, ghost in the machine은 명사이고 숙어 표시가 없어서 빠졌다(§4.1). 명사를 기능어(of, in, the …)가 든 것까지 넓히면 들어오지만 republic of the congo 같은 이름도 같이 들어온다. 평가 뒤에 정한다.
-8. **고정 단어만 있는 짧은 숙어의 오탐**: word up(감탄사)은 패턴이 `word up`뿐이라 "He looked the word up." 안의 word up에도 맞는다. 동사가 아닌 숙어도 품사나 위치를 확인해야 한다. 감탄사는 문장 앞에서만 받는 식이다. 탐지기에서 정한다.
+8. **화면에 무엇을 보여줄지**: small room, I think, open the door처럼 표시는 맞지만 문자 그대로 쓰인 탐지가 많다. `level`로 거를 수 있다. 기본값을 무엇으로 할지 정해야 한다.
 
 ---
 
@@ -328,6 +374,6 @@ POST /api/idioms/detect   {"text": "She took the cost into account."}
 
 1. ~~`build_idioms.py`: 목록 다시 만들기 + 지금 목록과의 차이 보고 (§4.1)~~ — 2026-11-07 완료
 2. ~~`eval_idioms.py`: 평가 세트를 만들고 **v2부터** 잰다. 기준선이 된다~~ — 2026-11-07 완료 (§6)
-3. `idiom_detect.py`: §4.2~4.3 구현, 평가하면서 고치기
+3. ~~`idiom_detect.py`: §4.2~4.3 구현, 평가하면서 고치기~~ — 2026-11-07 완료
 4. 모델 비교 (sm / lg / trf), 서버 메모리 측정
-5. API 붙이기, `/test` 페이지에 숙어 탐지 칸 추가
+5. ~~API 붙이기, `/test` 페이지에 숙어 탐지 칸 추가~~ — 2026-11-07 완료 (운영 배포는 안 함)

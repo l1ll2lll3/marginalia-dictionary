@@ -103,11 +103,11 @@ def qualifies(entry, senses) -> list[str]:
     why = []
     if "idiomatic" in tags:
         why.append("idiomatic")
+    if "figuratively" in tags:
+        why.append("figuratively")
     if any(PHRASAL_CAT.match(c) for c in categories(entry)):
         why.append("phrasal")
     if pos == "noun":
-        if "figuratively" in tags:
-            why.append("figuratively")
         if any(LITERAL_GLOSS in " ".join(s.get("glosses") or []) for s in senses):
             why.append("literal_sense")
     elif pos not in EXCLUDED_POS:

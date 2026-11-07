@@ -5,7 +5,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY dict.db.gz .
-COPY server.py .
+COPY server.py idiom_detect.py ./
 COPY start.sh .
 COPY static/ static/
 RUN chmod +x start.sh

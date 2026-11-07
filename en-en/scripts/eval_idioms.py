@@ -2,8 +2,10 @@
 """숙어 탐지기를 kaikki 예문으로 평가한다 (docs/idiom_detection.md §6).
 
     python en-en/scripts/eval_idioms.py --sets                  # 평가 세트 크기와 예시만
+    python en-en/scripts/eval_idioms.py                         # idiom_detect.py
     python en-en/scripts/eval_idioms.py --detector v2           # reading의 v2 (기준선)
     python en-en/scripts/eval_idioms.py --detector v2 --limit 3000 --misses 15
+    python en-en/scripts/eval_idioms.py --book <book_package.json>   # 정밀도 검토용 샘플
 
 정답은 손으로 만들지 않는다. 예문 하나마다 "그 예문이 붙은 숙어를 찾았는가"를 본다.
 예문은 숙어의 고정 단어(HEAD·LIT)와 맞춰서 나눈다:
@@ -123,7 +125,7 @@ def classify(tokens, patterns, forms):
 def load_examples(tokenizer):
     """예문을 읽어서 세트를 정한다."""
     conn = sqlite3.connect(str(DB_PATH))
-    idioms = {r[0]: {"phrase": r[1], "norm": r[2], "pos": r[3]}
+    idioms = {r[0]: {"id": r[0], "phrase": r[1], "norm": r[2], "pos": r[3]}
               for r in conn.execute("SELECT id, phrase, phrase_normalized, pos FROM idioms")}
 
     names = defaultdict(set)         # 이 숙어로 쳐 주는 이름 (원형 + 활용형 + 이형)
@@ -208,7 +210,23 @@ class V2Detector:
         return idiom["norm"] in self.known
 
 
-DETECTORS = {"v2": V2Detector}
+class NewDetector:
+    """en-en/app/idiom_detect.py."""
+    name = "new"
+
+    def __init__(self, nlp):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
+        from idiom_detect import IdiomDetector
+        self.detector = IdiomDetector(db_path=DB_PATH, nlp=nlp)
+
+    def detect(self, doc):
+        return {normalize(apostrophe(r["idiom"])) for r in self.detector.detect(doc)}
+
+    def covers(self, idiom):
+        return idiom["id"] in self.detector.active
+
+
+DETECTORS = {"v2": V2Detector, "new": NewDetector}
 
 
 def show_sets(examples, idioms, samples):
@@ -234,10 +252,11 @@ def run_regression(nlp, detector):
     return passed
 
 
-def evaluate(detector, docs, examples, idioms, names, misses):
+def evaluate(detector, docs, examples, idioms, names, misses, extras):
     t0 = time.time()
     stats = defaultdict(Counter)
     extra = 0
+    extra_count = Counter()
     missed = defaultdict(list)
     used = 0
     for doc, e in zip(docs, examples):
@@ -248,6 +267,7 @@ def evaluate(detector, docs, examples, idioms, names, misses):
         gold = names[e["idiom"]]
         hit = bool(found & gold)
         extra += len(found - gold)
+        extra_count.update(found - gold)
         row = stats[e["set"]]
         row["n"] += 1
         row["hit"] += hit
@@ -269,6 +289,10 @@ def evaluate(detector, docs, examples, idioms, names, misses):
     print(f"  예문당 다른 숙어 탐지: {extra / max(used, 1):.2f}개  (맞는 것도 섞여 있다. 많으면 오탐을 의심한다)")
     print(f"  ({time.time() - t0:.0f}s)")
 
+    if extras:
+        print(f"\n가장 많이 잡힌 다른 숙어 (예문의 숙어가 아닌 것): 종류 {len(extra_count):,}")
+        print("  " + " · ".join(f"{k} {v}" for k, v in extra_count.most_common(extras)))
+
     if misses:
         rng = random.Random(0)
         for kind in SETS[:3]:
@@ -277,14 +301,48 @@ def evaluate(detector, docs, examples, idioms, names, misses):
                 print(f"  [{idioms[e['idiom']]['phrase']}] {e['text'][:110]}")
 
 
+def book_sample(nlp, book, sample, out):
+    """책 문장의 탐지 결과를 무작위로 뽑아 사람이 볼 파일을 만든다 (정밀도는 정답이 없다).
+
+    붙어 있는 것과 떨어진 것을 반씩 뽑는다. 떨어진 쪽이 오탐 위험이 크고 수가 적기 때문이다.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
+    from idiom_detect import IdiomDetector
+    detector = IdiomDetector(db_path=DB_PATH, nlp=nlp)
+    with open(book, encoding="utf-8") as f:
+        sentences = [(s["id"], s["text"]) for ch in json.load(f)["chapters"] for s in ch["sentences"]]
+    hits = []
+    for (sid, _), doc in zip(sentences, nlp.pipe((t for _, t in sentences), batch_size=256)):
+        hits.extend({**r, "sid": sid, "text": doc.text} for r in detector.detect(doc))
+    split = [h for h in hits if not h["continuous"]]
+    joined = [h for h in hits if h["continuous"]]
+    print(f"문장 {len(sentences):,}개에서 {len(hits):,}개 탐지 (붙음 {len(joined):,} · 떨어짐 {len(split):,})")
+    rng = random.Random(0)
+    half = sample // 2
+    picked = rng.sample(split, min(half, len(split))) + rng.sample(joined, min(sample - half, len(joined)))
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("판정\t숙어\t찾은 말\t떨어짐\t문장 id\t문장\n")
+        for h in picked:
+            f.write(f"\t{h['idiom']}\t{h['as_found']}\t{'' if h['continuous'] else 'Y'}\t{h['sid']}\t{h['text']}\n")
+    print(f"검토 파일: {out} ({len(picked)}개)")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--detector", choices=sorted(DETECTORS), default="v2")
+    parser.add_argument("--detector", choices=sorted(DETECTORS), default="new")
     parser.add_argument("--model", default="en_core_web_sm")
     parser.add_argument("--sets", action="store_true", help="평가 세트만 보여준다")
     parser.add_argument("--limit", type=int, help="예문을 무작위로 이만큼만 쓴다")
     parser.add_argument("--misses", type=int, default=0, help="못 찾은 예문을 세트마다 이만큼 보여준다")
+    parser.add_argument("--book", help="book_package.json. 탐지 결과 샘플을 --out에 쓴다")
+    parser.add_argument("--sample", type=int, default=200)
+    parser.add_argument("--out", default=str(DB_PATH.parent / "idiom_review.tsv"))
+    parser.add_argument("--extras", type=int, default=0, help="예문의 숙어가 아닌데 많이 잡힌 숙어를 이만큼 보여준다")
     args = parser.parse_args()
+
+    if args.book:
+        book_sample(spacy.load(args.model), args.book, args.sample, args.out)
+        return
 
     tokenizer = spacy.blank("en").tokenizer
     examples, idioms, names = load_examples(tokenizer)
@@ -299,7 +357,7 @@ def main():
     detector = DETECTORS[args.detector](nlp)
     run_regression(nlp, detector)
     docs = parsed_docs(nlp, examples, args.model, use_cache=not args.limit)
-    evaluate(detector, docs, examples, idioms, names, args.misses)
+    evaluate(detector, docs, examples, idioms, names, args.misses, args.extras)
 
 
 if __name__ == "__main__":

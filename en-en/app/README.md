@@ -68,6 +68,7 @@ dict_app/
 |--------|------|------|
 | GET | `/api/lookup?word=bourdon` | 단어 조회 (IPA, 뜻, 어원) |
 | GET | `/api/idiom?phrase=piece+of+cake` | 숙어 조회 (관사 제거 fallback) |
+| POST | `/api/idioms/detect` `{"text": "..."}` | 문장 속 숙어 찾기 (불연속 포함, spaCy) |
 | GET | `/api/search?q=medi*` | 와일드카드 검색 |
 | GET | `/` | 웹 UI |
 

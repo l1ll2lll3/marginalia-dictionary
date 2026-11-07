@@ -4,6 +4,7 @@
 *.db.gz
 *.db-journal
 *.spacy
+en-en/data/build/idiom_review.tsv
 shared/data/raw/
 
 # 환경

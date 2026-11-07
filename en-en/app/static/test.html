@@ -58,6 +58,13 @@
   td, th { border: 1px solid var(--line); padding: 4px 10px; text-align: right; }
   th:first-child, td:first-child { text-align: left; }
   .err { color: var(--c); }
+  #idiomForm { display: flex; gap: .5rem; margin: .5rem 0; }
+  #idiomText { flex: 1; min-width: 0; }
+  .sentence { line-height: 1.9; margin: .75rem 0; }
+  .sentence mark { background: #dbe4ff; color: inherit; border-radius: 3px; padding: 0 2px; }
+  .idiom-hit { border-top: 1px solid var(--line); padding: .5rem 0; }
+  .idiom-hit .lv { font-size: .75rem; color: var(--muted); margin-left: .4rem; }
+  .idiom-hit ol { margin: .25rem 0 0; padding-left: 1.25rem; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -72,6 +79,15 @@
   <div class="chips" id="chips"></div>
 
   <div id="out"></div>
+
+  <h2>숙어 탐지</h2>
+  <p class="sub">문장을 넣으면 그 안의 숙어를 찾는다. 숙어 단어 사이에 다른 말이 끼어 있어도 찾는다.</p>
+  <form id="idiomForm">
+    <input id="idiomText" placeholder="문장 (예: She took the cost into account.)" autocomplete="off">
+    <button>찾기</button>
+  </form>
+  <div class="chips" id="idiomChips"></div>
+  <div id="idiomOut"></div>
 
   <details id="statsBox">
     <summary>DB 현황</summary>
@@ -177,6 +193,50 @@ async function lookup(word) {
   }
 }
 
+const IDIOM_SAMPLES = ["She took the cost into account.", "He made up his mind at last.",
+  "Keep a close eye on him.", "He picked the heavy book up from the floor.", "Here is a fact that will give you pause."];
+const LEVEL = { idiom: "숙어", phrasal: "구동사", phrase: "고정 표현" };
+
+function highlighted(text, results) {
+  const marks = results.flatMap((r) => r.tokens).sort((a, b) => a[0] - b[0]);
+  const p = el("p", "sentence");
+  let at = 0;
+  for (const [start, end] of marks) {
+    if (start < at) continue;
+    p.append(text.slice(at, start), el("mark", null, text.slice(start, end)));
+    at = end;
+  }
+  p.append(text.slice(at));
+  return p;
+}
+
+async function detectIdioms(text) {
+  text = text.trim();
+  if (!text) return;
+  $("#idiomText").value = text;
+  const out = $("#idiomOut");
+  try {
+    const res = await fetch("/api/idioms/detect", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const nodes = [highlighted(data.text, data.results)];
+    if (!data.results.length) nodes.push(el("p", "sub", "찾은 숙어가 없다."));
+    for (const r of data.results) {
+      const hit = el("div", "idiom-hit");
+      hit.append(el("strong", null, r.idiom), el("span", "lv", LEVEL[r.level] + (r.gap ? " · 낀 말: " + r.gap : "")));
+      const list = el("ol");
+      for (const s of r.senses.filter((x) => !x.literal).slice(0, 4)) list.append(el("li", null, s.gloss));
+      hit.append(list);
+      nodes.push(hit);
+    }
+    out.replaceChildren(...nodes);
+  } catch (e) {
+    out.replaceChildren(el("p", "err", "숙어 탐지 실패: " + e.message));
+  }
+}
+
 function chip(word) {
   const c = el("button", "chip", word);
   c.type = "button";
@@ -215,6 +275,14 @@ SAMPLES.forEach((w) => $("#chips").append(chip(w)));
 $("#f").onsubmit = (e) => { e.preventDefault(); lookup($("#q").value); };
 $("#statsBox").ontoggle = () => { if ($("#statsBox").open) loadStats(); };
 lookup(new URLSearchParams(location.search).get("w") || "object");
+
+$("#idiomForm").addEventListener("submit", (e) => { e.preventDefault(); detectIdioms($("#idiomText").value); });
+for (const text of IDIOM_SAMPLES) {
+  const c = el("button", "chip", text);
+  c.type = "button";
+  c.onclick = () => detectIdioms(text);
+  $("#idiomChips").append(c);
+}
 </script>
 </body>
 </html>

@@ -238,6 +238,42 @@ def idiom():
     return jsonify({"query": phrase, "results": results})
 
 
+_DETECTOR = None
+
+
+def get_detector():
+    """숙어 탐지기. spaCy 모델이 무거워서 처음 쓸 때 읽는다. 없으면 None."""
+    global _DETECTOR
+    if _DETECTOR is None:
+        try:
+            import spacy
+            from idiom_detect import IdiomDetector
+            _DETECTOR = IdiomDetector(db_path=DB_PATH, nlp=spacy.load("en_core_web_sm", exclude=["ner"]))
+        except (ImportError, OSError, sqlite3.OperationalError) as e:
+            app.logger.warning("idiom detector unavailable: %s", e)
+            return None
+    return _DETECTOR
+
+
+@app.route("/api/idioms/detect", methods=["POST"])
+def idioms_detect():
+    """문장 속 숙어 찾기. docs/idiom_detection.md §7. level로 거를 수 있다 (idiom,phrasal,phrase)."""
+    body = request.get_json(silent=True) or {}
+    text = (body.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text required"}), 400
+    if len(text) > 2000:
+        return jsonify({"error": "text too long (max 2000)"}), 400
+    detector = get_detector()
+    if detector is None:
+        return jsonify({"error": "idiom detector not available"}), 503
+    results = detector.find(text)
+    levels = body.get("levels")
+    if levels:
+        results = [r for r in results if r["level"] in levels]
+    return jsonify({"text": text, "results": results})
+
+
 @app.route("/api/search")
 def search():
     q = request.args.get("q", "").strip()

@@ -39,7 +39,7 @@ marginalia-dictionary/
 ├── docs/
 │   ├── schema.md           ← DB 스키마 (현재 + 추가 예정)
 │   ├── grading_sources.md  ← 어휘 등급 목록 조사와 결정
-│   └── idiom_detection.md  ← 불연속 숙어 탐지 설계 (숙어 목록·패턴 빌드까지 구현)
+│   └── idiom_detection.md  ← 불연속 숙어 탐지 설계와 평가 결과
 ├── en-en/
 │   ├── scripts/
 │   │   ├── build_dict_db.py          kaikki JSONL → dict.db
@@ -50,7 +50,7 @@ marginalia-dictionary/
 │   │   ├── dict.py                   CLI 조회
 │   │   ├── extract_pronunciations.py 품사별 미국식 발음 선택 (개선된 로직)
 │   │   └── cefr_grading.py           CEFR-J + Octanove 등급 판정
-│   ├── app/                          Fly.io 웹앱 (server.py, static/index.html, static/test.html)
+│   ├── app/                          Fly.io 웹앱 (server.py, idiom_detect.py, static/index.html, static/test.html)
 │   ├── data/raw/                     kaikki-en.jsonl (3.1GB), english_idioms.json (옛 숙어 목록, 비교용)
 │   ├── data/cefr/                    CEFR-J 1.5, Octanove 1.0 CSV + 라이선스 메모
 │   ├── data/kr_curriculum/           교육과정 기본 어휘 CSV
@@ -132,7 +132,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
    - ko·zh가 표제어인 쪽(ko-en, zh-en, ko-zh, zh-ko)은 KRDICT와 CC-CEDICT로 만든다.
    - 다 되면 JSON을 리포에서 뺀다. reading 쪽에서 이 JSON을 쓰는 `api_server.py`(`/api/dictionary/lookup`)와 `add_vocab_translations.py`는 reading 세션에서 새 표로 바꾼다.
 5. 한국어 사전 파이프라인을 만든다 (KRDICT, ko-ko / ko-en). KRDICT 등급(초급·중급·고급)도 `word_levels`에 `scheme='krdict'`로 넣는다.
-6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). 숙어 목록·패턴 빌드(`build_idioms.py`)와 평가(`eval_idioms.py`, v2 기준선)는 했고, 다음은 탐지기(`idiom_detect.py`)다.
+6. 문장 속 불연속 숙어 탐지 (take *the cost* into account). 설계는 `docs/idiom_detection.md`에 있다 (2026-11-07). 탐지기(`en-en/app/idiom_detect.py`)와 API(`POST /api/idioms/detect`)까지 만들었다 (불연속 재현율 80.2%, v2는 47.7%). 남은 것: 사용자의 정밀도 검토, 운영 배포(메모리 약 440MB 처리 필요), 사전 검색에서 숙어 후보를 고르는 기능.
 
 ## 라이선스
 
